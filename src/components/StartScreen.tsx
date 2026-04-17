@@ -36,7 +36,7 @@ export default function StartScreen({ onStart }: StartScreenProps) {
   };
 
   return (
-    <div className="relative w-full h-screen bg-[#050505] flex flex-col items-center justify-center overflow-hidden font-sans text-white">
+    <div className="relative w-full min-h-screen bg-[#050505] flex flex-col items-center justify-center overflow-y-auto overflow-x-hidden font-sans text-white py-8">
       {/* Background Atmosphere */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div 
@@ -59,15 +59,15 @@ export default function StartScreen({ onStart }: StartScreenProps) {
             transition={{ duration: 0.5 }}
             className="z-10 flex flex-col items-center"
           >
-            <h1 className="text-7xl md:text-9xl font-black tracking-tighter uppercase italic transform -skew-x-12 mb-8 text-transparent bg-clip-text bg-gradient-to-br from-white via-white to-gray-500 text-center">
+            <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-black tracking-tighter uppercase italic transform -skew-x-12 mb-4 sm:mb-6 text-transparent bg-clip-text bg-gradient-to-br from-white via-white to-gray-500 text-center">
           GRIDLOCK<br/>DEFENSE
         </h1>
 
-        <p className="max-w-md text-center text-gray-400 mb-12 font-light leading-relaxed px-6">
+        <p className="max-w-md text-center text-gray-400 mb-6 sm:mb-8 text-sm sm:text-base font-light leading-relaxed px-6">
           The grid is under attack. Deploy advanced defensive protocols to neutralize incoming threats. Strategy is your only weapon.
         </p>
 
-        <div className="flex flex-col items-center gap-8 min-h-[300px]">
+        <div className="flex flex-col items-center gap-4 sm:gap-6 w-full max-w-sm min-h-[260px]">
           <AnimatePresence mode="wait">
             {selectionPhase === 'init' && (
               <motion.button
@@ -78,7 +78,7 @@ export default function StartScreen({ onStart }: StartScreenProps) {
                 whileHover={{ scale: 1.05, skewX: -12 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setSelectionPhase('difficulty')}
-                className="group relative px-12 py-4 bg-white text-black font-bold text-xl uppercase tracking-widest transform -skew-x-12 transition-colors hover:bg-[#00f2ff]"
+                className="group relative px-8 sm:px-12 py-3 sm:py-4 bg-white text-black font-bold text-base sm:text-xl uppercase tracking-widest transform -skew-x-12 transition-colors hover:bg-[#00f2ff]"
               >
                 <span className="relative z-10 flex items-center gap-3">
                   Initialize Defense <Play className="w-5 h-5 fill-current" />
@@ -102,7 +102,7 @@ export default function StartScreen({ onStart }: StartScreenProps) {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3">
+                <div className="grid grid-cols-1 gap-2 sm:gap-3">
                   <button 
                     onClick={() => handleDifficultySelect('easy')}
                     className="flex items-center gap-4 p-3 bg-white/5 border border-white/10 rounded hover:bg-[#00ff44]/20 hover:border-[#00ff44]/50 transition-all font-mono font-bold tracking-widest uppercase text-left group"
