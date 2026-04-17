@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Neon Siege</string>
+    <string name="title_activity_main">Neon Siege</string>
+    <string name="package_name">com.coarguello.neonsiege</string>
+    <string name="custom_url_scheme">com.coarguello.neonsiege</string>
+</resources>

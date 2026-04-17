@@ -1,7 +1,7 @@
-# 🛡️ NEON SIEGE: Tower Defense
+# 🛡️ GRIDLOCK DEFENSE: Tower Defense
 
 <div align="center">
-  <img src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" alt="Neon Siege Banner" width="100%">
+  <img src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" alt="GridLock Defense Banner" width="100%">
   <br />
   <p><i>The grid is under attack. Strategy is your only weapon.</i></p>
 </div>
@@ -9,7 +9,7 @@
 ---
 
 ## 🚀 Overview
-**Neon Siege** is a modern, fast-paced Tower Defense game designed with a striking "cyberpunk-minimalist" aesthetic. Built with **React 19** and a custom **HTML5 Canvas engine**, it offers smooth performance and a premium user experience through rich animations and glassmorphism effects.
+**GridLock Defense** is a modern, fast-paced Tower Defense game designed with a striking "cyberpunk-minimalist" aesthetic. Built with **React 19** and a custom **HTML5 Canvas engine**, it offers smooth performance and a premium user experience through rich animations and glassmorphism effects.
 
 ## ✨ Key Features
 - **Dynamic Canvas Engine:** High-performance rendering for hundreds of entities simultaneously.

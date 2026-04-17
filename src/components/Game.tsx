@@ -1,18 +1,28 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Shield, Heart, Coins, Play, Pause, RotateCcw, Zap, Target, Crosshair, Sword, Users } from 'lucide-react';
-import { Point, Enemy, Tower, Projectile, GameState, TowerType, EnemyType, TowerSlot, Soldier } from '../types';
-import { CANVAS_WIDTH, CANVAS_HEIGHT, PATH, TOWER_STATS, ENEMY_STATS, TOWER_SLOTS, SLOT_COST } from '../constants';
+import { Shield, Heart, Coins, Play, Pause, RotateCcw, Zap, Target, Crosshair, Sword, Users, Activity, Radio, Flame, Sun, Snowflake, Wand, Bomb, Trash } from 'lucide-react';
+import { Point, Enemy, Tower, Projectile, GameState, TowerType, EnemyType, Soldier, DifficultyLevel, MapLayout } from '../types';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, TOWER_STATS, ENEMY_STATS } from '../constants';
 
-export default function Game() {
+const getInitialState = (diff: DifficultyLevel): GameState => {
+  switch (diff) {
+    case 'easy': return { gold: 200, lives: 20, maxLives: 20, wave: 0, armyLevel: 1, isPaused: false, isGameOver: false, enemiesKilled: 0 };
+    case 'medium': return { gold: 150, lives: 20, maxLives: 20, wave: 0, armyLevel: 1, isPaused: false, isGameOver: false, enemiesKilled: 0 };
+    case 'master': return { gold: 100, lives: 15, maxLives: 15, wave: 0, armyLevel: 1, isPaused: false, isGameOver: false, enemiesKilled: 0 };
+    case 'insane': return { gold: 75, lives: 10, maxLives: 10, wave: 0, armyLevel: 1, isPaused: false, isGameOver: false, enemiesKilled: 0 };
+    default: return { gold: 150, lives: 20, maxLives: 20, wave: 0, armyLevel: 1, isPaused: false, isGameOver: false, enemiesKilled: 0 };
+  }
+};
+
+interface GameProps {
+  difficulty: DifficultyLevel;
+  mapLayout: MapLayout;
+}
+
+export default function Game({ difficulty, mapLayout }: GameProps) {
+  const PATH = mapLayout.path;
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [gameState, setGameState] = useState<GameState>({
-    gold: 150,
-    lives: 20,
-    wave: 0,
-    isPaused: false,
-    isGameOver: false,
-  });
+  const [gameState, setGameState] = useState<GameState>(getInitialState(difficulty));
 
   const [selectedTowerType, setSelectedTowerType] = useState<TowerType | null>(null);
   const [selectedTowerId, setSelectedTowerId] = useState<string | null>(null);
@@ -26,51 +36,166 @@ export default function Game() {
   const projectilesRef = useRef<Projectile[]>([]);
   const gameStateRef = useRef<GameState>(gameState);
   const lastWaveTimeRef = useRef<number>(0);
-  const slotsRef = useRef<TowerSlot[]>(TOWER_SLOTS.slice(0, 18).map((p, i) => ({
-    id: `slot-${i}`,
-    x: p.x,
-    y: p.y,
-    isPurchased: false,
-    hasTower: false,
-    // Make 3 specific slots visible at start: index 0 (start), 6 (middle), 14 (end)
-    isVisible: i === 0 || i === 6 || i === 14,
-  })));
+
+  // Helper distance checks for free placement
+  const distToSegmentSq = (p: Point, v: Point, w: Point) => {
+    const l2 = (w.x - v.x) ** 2 + (w.y - v.y) ** 2;
+    if (l2 === 0) return (p.x - v.x) ** 2 + (p.y - v.y) ** 2;
+    let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+    t = Math.max(0, Math.min(1, t));
+    return (p.x - (v.x + t * (w.x - v.x))) ** 2 + (p.y - (v.y + t * (w.y - v.y))) ** 2;
+  };
+
+  const isNearPath = useCallback((x: number, y: number, safeDist = 35) => {
+    const pt = { x, y };
+    for (let i = 0; i < PATH.length - 1; i++) {
+      if (distToSegmentSq(pt, PATH[i], PATH[i+1]) < safeDist * safeDist) return true;
+    }
+    return false;
+  }, [PATH]);
+
+  const isOverlappingTower = useCallback((x: number, y: number, safeDist = 45) => {
+    return towersRef.current.some(t => {
+      const dx = t.x - x;
+      const dy = t.y - y;
+      return (dx * dx + dy * dy) < safeDist * safeDist;
+    });
+  }, []);
 
   // Sync gameStateRef with state for the game loop (only for UI-driven changes)
   useEffect(() => {
     gameStateRef.current = gameState;
   }, [gameState]);
 
+
   const spawnArmy = useCallback(() => {
-    if (gameStateRef.current.gold < 100) return;
+    if (soldiersRef.current.length >= 10) return;
     
-    setGameState(prev => ({ ...prev, gold: prev.gold - 100 }));
+    const cost = 75; // Weaker start, lower cost
+    if (gameStateRef.current.gold < cost) return;
+    
+    setGameState(prev => ({ ...prev, gold: prev.gold - cost }));
     
     const lastWaypointIndex = PATH.length - 1;
     const spawnPoint = PATH[lastWaypointIndex];
+    const prevPoint = PATH[lastWaypointIndex - 1]; // Soldiers travel backwards along PATH
     
+    // Calculate exit vector to queue soldiers nicely just off-screen
+    const dxEnd = spawnPoint.x - prevPoint.x;
+    const dyEnd = spawnPoint.y - prevPoint.y;
+    const distEnd = Math.sqrt(dxEnd * dxEnd + dyEnd * dyEnd);
+    const normXEnd = dxEnd / distEnd;
+    const normYEnd = dyEnd / distEnd;
+    
+    const level = gameStateRef.current.armyLevel;
+    const hp = Math.floor(60 * (1 + (level - 1) * 0.7));
+    const damage = Math.floor(15 * (1 + (level - 1) * 0.6));
+
     const newSoldiers: Soldier[] = [];
     for (let i = 0; i < 5; i++) {
       newSoldiers.push({
         id: Math.random().toString(36).substr(2, 9),
-        x: spawnPoint.x + i * 30, // Staggered entry from the end
-        y: spawnPoint.y,
-        health: 150,
-        maxHealth: 150,
+        x: spawnPoint.x + normXEnd * i * 30, // Stagger trailing off the line
+        y: spawnPoint.y + normYEnd * i * 30,
+        health: hp,
+        maxHealth: hp,
         speed: 2.5, // Faster speed
-        damage: 25,
+        damage: damage,
+        level: level,
         waypointIndex: lastWaypointIndex,
         targetId: null,
       });
     }
     
     soldiersRef.current = [...soldiersRef.current, ...newSoldiers];
-  }, []);
+  }, [PATH]);
+
+  const upgradeArmy = () => {
+    const upgradeCost = gameState.armyLevel * 200;
+    if (gameState.gold < upgradeCost) return;
+
+    setGameState(prev => ({
+      ...prev,
+      gold: prev.gold - upgradeCost,
+      armyLevel: prev.armyLevel + 1
+    }));
+  };
 
   const spawnWave = useCallback(() => {
     const newWave = gameStateRef.current.wave + 1;
     setGameState(prev => ({ ...prev, wave: newWave }));
     
+    // Boss Wave Interception
+    if (newWave > 0 && newWave % 5 === 0) {
+      setGameState(prev => ({ ...prev, isBossAlert: true, isPaused: true }));
+      setTimeout(() => {
+        setGameState(prev => ({ ...prev, isBossAlert: false, isPaused: false }));
+        const startPt = PATH[0];
+        const nextPt = PATH[1];
+        const dxInit = nextPt.x - startPt.x;
+        const dyInit = nextPt.y - startPt.y;
+        const distInit = Math.sqrt(dxInit * dxInit + dyInit * dyInit);
+        const normX = dxInit / distInit;
+        const normY = dyInit / distInit;
+
+        const diffMods = {
+          easy: { hp: 0.8, spd: 0.9 },
+          medium: { hp: 1.0, spd: 1.0 },
+          master: { hp: 1.5, spd: 1.2 },
+          insane: { hp: 2.0, spd: 1.5 },
+        };
+        const { hp: hpMod, spd: spdMod } = diffMods[difficulty];
+        
+        const speedWaveMult = 1 + (newWave * 0.015);
+
+        const bossHealth = Math.floor(1900 * (newWave / 5) * hpMod);
+        
+        const bossEnemies: Enemy[] = [];
+        
+        // 1. The Boss
+        const bossTypes: ('tank' | 'stealth' | 'titan' | 'swarm')[] = ['tank', 'stealth', 'titan', 'swarm'];
+        const bossDesign = bossTypes[(newWave / 5 - 1) % bossTypes.length];
+        
+        bossEnemies.push({
+          id: Math.random().toString(36).substr(2, 9),
+          type: 'basic', // Inherits basic movement core
+          isBoss: true,
+          bossType: bossDesign,
+          x: startPt.x - normX * 40,
+          y: startPt.y - normY * 40,
+          health: bossHealth,
+          maxHealth: bossHealth,
+          speed: 1.2 * spdMod * speedWaveMult,
+          reward: 100,
+          color: '#ff0000',
+          waypointIndex: 0,
+          distanceTraveled: 0,
+        });
+
+        // 2. 3 Escorts
+        const stats = ENEMY_STATS['fast'];
+        for(let i=1; i<=3; i++) {
+           bossEnemies.push({
+             id: Math.random().toString(36).substr(2, 9),
+             type: 'fast',
+             x: startPt.x - normX * (40 + i * 45),
+             y: startPt.y - normY * (40 + i * 45),
+             health: stats.health * 1.5 * (newWave/5),
+             maxHealth: stats.health * 1.5 * (newWave/5),
+             speed: stats.speed * 1.2 * spdMod * speedWaveMult,
+             reward: 15,
+             color: '#ff0000',
+             waypointIndex: 0,
+             distanceTraveled: 0,
+             slowTimer: 0,
+           });
+        }
+        
+        enemiesRef.current = [...enemiesRef.current, ...bossEnemies];
+      }, 3000);
+      return;
+    }
+
     // Gradual difficulty for the first few waves
     let waveSize = 3;
     if (newWave === 2) waveSize = 5;
@@ -78,40 +203,88 @@ export default function Game() {
 
     const newEnemies: Enemy[] = [];
     
+    // Calculate entry vector to spawn enemies behind the path cleanly
+    const startPt = PATH[0];
+    const nextPt = PATH[1];
+    const dxInit = nextPt.x - startPt.x;
+    const dyInit = nextPt.y - startPt.y;
+    const distInit = Math.sqrt(dxInit * dxInit + dyInit * dyInit);
+    const normXInit = dxInit / distInit;
+    const normYInit = dyInit / distInit;
+
     for (let i = 0; i < waveSize; i++) {
       let type: EnemyType = 'basic';
-      if (newWave === 2 && i === waveSize - 1) {
-        type = 'fast';
-      } else if (newWave === 3 && i === waveSize - 1) {
-        type = 'tank';
-      } else if (newWave > 3) {
+      
+      // Elite Milestones
+      if (newWave === 20 && i === waveSize - 1) type = 'dreadnought';
+      else if (newWave === 30 && i === waveSize - 1) type = 'goliath';
+      else if (newWave === 40 && i === waveSize - 1) type = 'warprunner';
+      else if (newWave === 50 && i === waveSize - 1) type = 'titan';
+      else if (newWave === 60 && i === waveSize - 1) type = 'prime';
+      else if (newWave === 70 && i === waveSize - 1) type = 'overlord';
+      else if (newWave === 80 && i === waveSize - 1) type = 'stalker';
+      else if (newWave === 90 && i === waveSize - 1) type = 'singularity';
+      else if (newWave === 100 && i === waveSize - 1) type = 'nemesis';
+      
+      // Standard wave progression
+      else if (newWave > 2) {
         const rand = Math.random();
-        if (rand < 0.05 && newWave > 10) type = 'phantom';
-        else if (rand < 0.1 && newWave > 8) type = 'shielded';
-        else if (rand < 0.15 && newWave > 7) type = 'healer';
-        else if (rand < 0.2 && newWave > 6) type = 'armored';
-        else if (rand < 0.3 && newWave > 5) type = 'splitter';
-        else if (rand < 0.5 && newWave > 3) type = 'tank';
+        
+        // Late game random elite spawns (after their intro wave)
+        if (rand < 0.01 && newWave > 90) type = 'singularity';
+        else if (rand < 0.02 && newWave > 80) type = 'stalker';
+        else if (rand < 0.03 && newWave > 70) type = 'overlord';
+        else if (rand < 0.04 && newWave > 60) type = 'prime';
+        else if (rand < 0.05 && newWave > 50) type = 'titan';
+        else if (rand < 0.06 && newWave > 40) type = 'warprunner';
+        else if (rand < 0.08 && newWave > 30) type = 'goliath';
+        else if (rand < 0.10 && newWave > 20) type = 'dreadnought';
+        
+        // Mid-game spawns
+        else if (rand < 0.15 && newWave > 10) type = 'phantom';
+        else if (rand < 0.20 && newWave > 8) type = 'shielded';
+        else if (rand < 0.25 && newWave > 7) type = 'healer';
+        else if (rand < 0.35 && newWave > 6) type = 'armored';
+        else if (rand < 0.45 && newWave > 5) type = 'splitter';
+        else if (rand < 0.55 && newWave > 5) type = 'tank';
         else if (rand < 0.75) type = 'fast';
         else type = 'basic';
+      } else if (newWave === 2 && i === waveSize - 1) {
+        type = 'fast';
       }
       
       const stats = ENEMY_STATS[type];
       
+      const scalingFactor = newWave <= 10 ? 0.05 : 0.12;
+      
+      const diffMods = {
+        easy: { hp: 0.8, spd: 0.9 },
+        medium: { hp: 1.0, spd: 1.0 },
+        master: { hp: 1.5, spd: 1.2 },
+        insane: { hp: 2.0, spd: 1.5 },
+      };
+      
+      const { hp: hpMod, spd: spdMod } = diffMods[difficulty];
+      
+      const speedWaveMult = 1 + (newWave * 0.015);
+
+      const hMultiplier = (1 + (newWave - 1) * scalingFactor) * hpMod;
+      const sMultiplier = (1 + (newWave - 1) * (scalingFactor * 0.5)) * hpMod;
+
       newEnemies.push({
         id: Math.random().toString(36).substr(2, 9),
         type,
-        x: PATH[0].x - i * 40, // Staggered entry
-        y: PATH[0].y,
-        health: stats.health * (1 + newWave * 0.1),
-        maxHealth: stats.health * (1 + newWave * 0.1),
-        speed: stats.speed,
+        x: startPt.x - normXInit * i * 45, // Tighter stagger extending backwards off the screen
+        y: startPt.y - normYInit * i * 45,
+        health: stats.health * hMultiplier,
+        maxHealth: stats.health * hMultiplier,
+        speed: stats.speed * spdMod * speedWaveMult,
         reward: stats.reward,
         waypointIndex: 0,
         distanceTraveled: 0,
         armor: stats.armor,
-        shield: stats.shield ? stats.shield * (1 + newWave * 0.05) : undefined,
-        maxShield: stats.shield ? stats.shield * (1 + newWave * 0.05) : undefined,
+        shield: stats.shield ? stats.shield * sMultiplier : undefined,
+        maxShield: stats.shield ? stats.shield * sMultiplier : undefined,
         slowTimer: 0,
       });
     }
@@ -187,10 +360,57 @@ export default function Game() {
               if (other.id === enemy.id || other.health <= 0) return;
               const dx = other.x - enemy.x;
               const dy = other.y - enemy.y;
-              if (dx * dx + dy * dy < 100 * 100) {
+              if (dx * dx + dy * dy < 150 * 150) {
                 other.health = Math.min(other.maxHealth, other.health + 20);
               }
             });
+          }
+        }
+
+        // Boss Mechanic: Tower Destruction
+        if (enemy.isBoss) {
+          if (!enemy.targetTowerId) {
+            let closestTower: string | null = null;
+            let closestDist = 120 * 120; // 120px aggro range for Boss
+            towersRef.current.forEach(t => {
+              if (t.health <= 0) return;
+              const dx = t.x - enemy.x;
+              const dy = t.y - enemy.y;
+              const ds = dx*dx + dy*dy;
+              if (ds < closestDist) {
+                closestDist = ds;
+                closestTower = t.id;
+              }
+            });
+            if (closestTower) {
+              enemy.targetTowerId = closestTower;
+              enemy.hitCooldown = 1500;
+            }
+          }
+
+          if (enemy.targetTowerId) {
+            const tower = towersRef.current.find(t => t.id === enemy.targetTowerId);
+            if (tower && tower.health > 0) {
+              const dx = tower.x - enemy.x;
+              const dy = tower.y - enemy.y;
+              const distSq = dx*dx + dy*dy;
+              
+              if (distSq > 130 * 130) {
+                // Out of range, broke leash
+                enemy.targetTowerId = null;
+              } else {
+                // Attack the tower!
+                enemy.hitCooldown = (enemy.hitCooldown || 0) - deltaTime;
+                if (enemy.hitCooldown <= 0) {
+                  tower.health -= 150; // Massive hit
+                  enemy.hitCooldown = 1500;
+                }
+                // Boss stops moving to smash the tower
+                return;
+              }
+            } else {
+              enemy.targetTowerId = null; // Tower is dead
+            }
           }
         }
 
@@ -219,21 +439,20 @@ export default function Game() {
 
       // 1.5 Update Soldiers
       const deadSoldiers: string[] = [];
+      let earnedGold = 0;
       soldiersRef.current.forEach(soldier => {
-        let targetX: number | null = null;
-        let targetY: number | null = null;
-        let isChasing = false;
+        let isEngaged = false;
 
-        // Combat logic - Find target position
+        // Combat logic
         if (soldier.targetId) {
           const target = enemiesRef.current.find(e => e.id === soldier.targetId);
-          if (target) {
+          if (target && target.health > 0) {
             const dx = target.x - soldier.x;
             const dy = target.y - soldier.y;
             const distSq = dx * dx + dy * dy;
             
-            if (distSq < 40 * 40) { // Combat range
-              // Duel!
+            if (distSq < 60 * 60) { // Combat range
+              isEngaged = true; // Stay in place while fighting
               damageMap[target.id] = (damageMap[target.id] || 0) + soldier.damage * (deltaTime / 1000);
               soldier.health -= 25 * (deltaTime / 1000);
               target.engagedWith = soldier.id;
@@ -242,12 +461,9 @@ export default function Game() {
                 deadSoldiers.push(soldier.id);
                 target.engagedWith = null;
               }
-              return; // Stay in place while fighting
             } else {
-              // Target for chasing
-              targetX = target.x;
-              targetY = target.y;
-              isChasing = true;
+               soldier.targetId = null;
+               target.engagedWith = null;
             }
           } else {
             soldier.targetId = null;
@@ -257,72 +473,65 @@ export default function Game() {
         // Find nearest enemy to engage (that isn't already engaged)
         if (!soldier.targetId) {
           const nearestEnemy = enemiesRef.current.find(e => {
-            if (e.engagedWith) return false;
+            if (e.engagedWith && e.engagedWith !== soldier.id) return false;
             const dx = e.x - soldier.x;
             const dy = e.y - soldier.y;
-            return dx * dx + dy * dy < 150 * 150;
+            return dx * dx + dy * dy < 60 * 60;
           });
           if (nearestEnemy) {
             soldier.targetId = nearestEnemy.id;
-            // Don't move yet, will move next frame or below
+            nearestEnemy.engagedWith = soldier.id;
+            isEngaged = true;
           }
         }
 
-        // If not chasing, move backwards through path
-        if (!isChasing) {
-          const targetWaypoint = PATH[soldier.waypointIndex - 1];
-          if (!targetWaypoint) {
-            deadSoldiers.push(soldier.id);
-            return;
-          }
-          targetX = targetWaypoint.x;
-          targetY = targetWaypoint.y;
+        if (isEngaged) return; // Stay perfectly in place to fight!
+
+        // Movement Logic!
+        // We ALWAYS trace the path backwards.
+        const targetWaypoint = PATH[soldier.waypointIndex - 1];
+        if (!targetWaypoint) {
+           // We reached the enemy spawn! Despawn and grant gold.
+           deadSoldiers.push(soldier.id);
+           earnedGold += 10;
+           return;
         }
 
-        if (targetX !== null && targetY !== null) {
-          const currentWaypoint = PATH[soldier.waypointIndex];
-          const targetWaypoint = PATH[soldier.waypointIndex - 1];
-          
-          if (!targetWaypoint) return;
+        let moveX = targetWaypoint.x - soldier.x;
+        let moveY = targetWaypoint.y - soldier.y;
 
-          // Strict axis-aligned movement logic
-          const isVerticalSegment = currentWaypoint.x === targetWaypoint.x;
-          let moveX = 0;
-          let moveY = 0;
+        const distance = Math.sqrt(moveX * moveX + moveY * moveY);
+        const moveDist = soldier.speed * (deltaTime / 16);
+        let canMove = true;
 
-          if (isVerticalSegment) {
-            // Segment is vertical (fixed X). Fix X first if off-track.
-            if (Math.abs(soldier.x - currentWaypoint.x) > 0.1) {
-              moveX = currentWaypoint.x - soldier.x;
-              moveY = 0;
-            } else {
-              // On track, move vertically towards target (enemy or waypoint)
-              moveX = 0;
-              moveY = targetY - soldier.y;
-            }
-          } else {
-            // Segment is horizontal (fixed Y). Fix Y first if off-track.
-            if (Math.abs(soldier.y - currentWaypoint.y) > 0.1) {
-              moveX = 0;
-              moveY = currentWaypoint.y - soldier.y;
-            } else {
-              // On track, move horizontally towards target
-              moveX = targetX - soldier.x;
-              moveY = 0;
+        // Prevent soldier stacking / merging along path
+        if (distance > 0) {
+          const dirX = moveX / distance;
+          const dirY = moveY / distance;
+          for (const other of soldiersRef.current) {
+            if (other.id !== soldier.id) {
+              const dx = other.x - soldier.x;
+              const dy = other.y - soldier.y;
+              const distSq = dx * dx + dy * dy;
+
+              // Minimum separation
+              if (distSq < 32 * 32) {
+                const dot = dirX * dx + dirY * dy;
+                // Stop entirely if someone is directly blocking our movement vector backwards along the path
+                if (dot > 0 && Math.abs(dot) > Math.sqrt(distSq) * 0.4) {
+                  canMove = false;
+                  break;
+                }
+              }
             }
           }
+        }
 
-          const distance = Math.sqrt(moveX * moveX + moveY * moveY);
-          const moveDist = soldier.speed * (deltaTime / 16);
-
+        if (canMove) {
           if (distance <= moveDist && distance > 0) {
-            soldier.x += moveX;
-            soldier.y += moveY;
-            
-            // If we reached a waypoint while patrolling, decrement index
-            if (!isChasing && Math.abs(soldier.x - targetWaypoint.x) < 1 && Math.abs(soldier.y - targetWaypoint.y) < 1) {
-              soldier.waypointIndex--;
-            }
+            soldier.x = targetWaypoint.x;
+            soldier.y = targetWaypoint.y;
+            soldier.waypointIndex--;
           } else if (distance > 0) {
             soldier.x += (moveX / distance) * moveDist;
             soldier.y += (moveY / distance) * moveDist;
@@ -332,6 +541,10 @@ export default function Game() {
 
       if (deadSoldiers.length > 0) {
         soldiersRef.current = soldiersRef.current.filter(s => !deadSoldiers.includes(s.id));
+      }
+
+      if (earnedGold > 0) {
+        setGameState(prev => ({ ...prev, gold: prev.gold + earnedGold }));
       }
 
       // Handle enemies reaching the end
@@ -412,7 +625,12 @@ export default function Game() {
         
         if (distSq <= (pMoveDist + 5) * (pMoveDist + 5)) {
           hitProjectiles.push(p.id);
-          damageMap[target.id] = (damageMap[target.id] || 0) + p.damage;
+          
+          // Secret Fatigue mechanic: Turrets slowly lose efficiency as waves progress (1% per wave, cap at 75% reduction)
+          const fatigueMultiplier = Math.max(0.25, 1 - (gameStateRef.current.wave * 0.01));
+          const effectiveProjDamage = p.damage * fatigueMultiplier;
+          
+          damageMap[target.id] = (damageMap[target.id] || 0) + effectiveProjDamage;
         } else {
           const dist = Math.sqrt(distSq);
           p.x += (dx / dist) * pMoveDist;
@@ -422,6 +640,7 @@ export default function Game() {
 
       // Apply Damage
       let goldEarned = 0;
+      let earnedKills = 0;
       const splitEnemies: Enemy[] = [];
 
       enemiesRef.current = enemiesRef.current.map(e => {
@@ -447,6 +666,7 @@ export default function Game() {
           
           if (newHealth <= 0) {
             goldEarned += e.reward;
+            earnedKills += 1;
             
             // Handle Splitting
             if (e.type === 'splitter') {
@@ -473,12 +693,26 @@ export default function Game() {
         return e;
       }).filter(e => e.health > 0);
 
-      if (splitEnemies.length > 0) {
-        enemiesRef.current = [...enemiesRef.current, ...splitEnemies];
-      }
+      enemiesRef.current = [...enemiesRef.current, ...splitEnemies];
 
-      if (goldEarned > 0) {
-        setGameState(gs => ({ ...gs, gold: gs.gold + goldEarned }));
+      // Cleanup Destroyed Towers
+      towersRef.current = towersRef.current.filter(t => t.health > 0);
+
+
+      if (goldEarned > 0 || earnedKills > 0) {
+        setGameState(gs => {
+          let bonus = 0;
+          if (earnedKills > 0) {
+            const prevM = Math.floor(gs.enemiesKilled / 1000);
+            const newM = Math.floor((gs.enemiesKilled + earnedKills) / 1000);
+            bonus = (newM - prevM) * 50;
+          }
+          return {
+            ...gs,
+            gold: gs.gold + goldEarned + bonus,
+            enemiesKilled: gs.enemiesKilled + earnedKills
+          };
+        });
       }
 
       if (hitProjectiles.length > 0) {
@@ -497,23 +731,11 @@ export default function Game() {
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      // Clear
+      // Clear Base
       ctx.fillStyle = '#0a0a0a';
       ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-      // Draw Grid (Subtle)
-      ctx.strokeStyle = '#1a1a1a';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      for (let x = 0; x < CANVAS_WIDTH; x += 40) {
-        ctx.moveTo(x, 0); ctx.lineTo(x, CANVAS_HEIGHT);
-      }
-      for (let y = 0; y < CANVAS_HEIGHT; y += 40) {
-        ctx.moveTo(0, y); ctx.lineTo(CANVAS_WIDTH, y);
-      }
-      ctx.stroke();
-
-      // Draw Path
+      // Draw Main Path Ground
       ctx.strokeStyle = '#222';
       ctx.lineWidth = 40;
       ctx.lineJoin = 'round';
@@ -523,54 +745,12 @@ export default function Game() {
       PATH.forEach(p => ctx.lineTo(p.x, p.y));
       ctx.stroke();
 
-      // Path Highlight
+      // Path Border Highlight
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
       ctx.lineWidth = 44;
       ctx.stroke();
 
-      // Draw Slots
-      slotsRef.current.forEach(s => {
-        if (!s.isVisible) return;
 
-        const size = 36;
-        const half = size / 2;
-        
-        if (!s.isPurchased) {
-          // Locked Slot (Square)
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-          ctx.lineWidth = 1;
-          ctx.setLineDash([4, 4]);
-          ctx.strokeRect(s.x - half, s.y - half, size, size);
-          ctx.setLineDash([]);
-          
-          // Draw cost
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-          ctx.font = 'bold 9px monospace';
-          ctx.textAlign = 'center';
-          ctx.fillText(`$${SLOT_COST}`, s.x, s.y + 4);
-          
-          // Corner accents
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-          ctx.fillRect(s.x - half - 2, s.y - half - 2, 4, 4);
-          ctx.fillRect(s.x + half - 2, s.y - half - 2, 4, 4);
-          ctx.fillRect(s.x - half - 2, s.y + half - 2, 4, 4);
-          ctx.fillRect(s.x + half - 2, s.y + half - 2, 4, 4);
-        } else if (!s.hasTower) {
-          // Purchased Empty Slot
-          ctx.strokeStyle = 'rgba(0, 255, 68, 0.2)';
-          ctx.lineWidth = 2;
-          ctx.strokeRect(s.x - half, s.y - half, size, size);
-          
-          // Subtle glow/fill
-          ctx.fillStyle = 'rgba(0, 255, 68, 0.03)';
-          ctx.fillRect(s.x - half, s.y - half, size, size);
-
-          // Inner square
-          ctx.strokeStyle = 'rgba(0, 255, 68, 0.1)';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(s.x - 10, s.y - 10, 20, 20);
-        }
-      });
 
       // Draw Towers
       towersRef.current.forEach(t => {
@@ -588,24 +768,24 @@ export default function Game() {
 
         // Tower Body (Base)
         ctx.fillStyle = stats.color;
-        ctx.fillRect(t.x - 15, t.y - 15, 30, 30);
+        ctx.fillRect(t.x - 22.5, t.y - 22.5, 45, 45);
         
         // Tower Level-based Design Changes
         if (t.level >= 2) {
           // Level 2: Add an outer frame
           ctx.strokeStyle = '#fff';
           ctx.lineWidth = 2;
-          ctx.strokeRect(t.x - 18, t.y - 18, 36, 36);
+          ctx.strokeRect(t.x - 27, t.y - 27, 54, 54);
         }
 
         if (t.level >= 3) {
           // Level 3: Add corner "antennas"
           ctx.fillStyle = '#fff';
-          const size = 4;
-          ctx.fillRect(t.x - 20, t.y - 20, size, size);
-          ctx.fillRect(t.x + 16, t.y - 20, size, size);
-          ctx.fillRect(t.x - 20, t.y + 16, size, size);
-          ctx.fillRect(t.x + 16, t.y + 16, size, size);
+          const size = 6;
+          ctx.fillRect(t.x - 30, t.y - 30, size, size);
+          ctx.fillRect(t.x + 24, t.y - 30, size, size);
+          ctx.fillRect(t.x - 30, t.y + 24, size, size);
+          ctx.fillRect(t.x + 24, t.y + 24, size, size);
         }
 
         if (t.level >= 4) {
@@ -616,7 +796,7 @@ export default function Game() {
           ctx.strokeStyle = stats.color;
           ctx.setLineDash([5, 5]);
           ctx.beginPath();
-          ctx.arc(0, 0, 22, 0, Math.PI * 2);
+          ctx.arc(0, 0, 33, 0, Math.PI * 2);
           ctx.stroke();
           ctx.restore();
         }
@@ -632,18 +812,223 @@ export default function Game() {
         ctx.font = 'bold 10px monospace';
         ctx.textAlign = 'center';
         ctx.fillText(`LVL ${t.level}`, t.x, t.y + 35);
+        
+        // Tower Health Bar
+        if (t.health < t.maxHealth) {
+          const hpPercent = t.health / t.maxHealth;
+          ctx.fillStyle = '#333';
+          ctx.fillRect(t.x - 20, t.y - 35, 40, 3);
+          ctx.fillStyle = hpPercent > 0.5 ? '#00ff44' : (hpPercent > 0.2 ? '#ffff00' : '#ff4400');
+          ctx.fillRect(t.x - 20, t.y - 35, 40 * hpPercent, 3);
+        }
       });
 
       // Draw Enemies
       enemiesRef.current.forEach(e => {
-        const stats = ENEMY_STATS[e.type];
-        const radius = e.type === 'mini' ? 6 : 12;
+        let radius = e.type === 'mini' ? 9 : 18;
+        let color = ENEMY_STATS[e.type]?.color || '#ffffff';
         
-        // Enemy Body
-        ctx.fillStyle = stats.color;
-        ctx.beginPath();
-        ctx.arc(e.x, e.y, radius, 0, Math.PI * 2);
-        ctx.fill();
+        // Boss Modifications
+        if (e.isBoss) {
+          radius = 35; // Massive radius
+          color = e.color || '#ff0000';
+          
+          ctx.save();
+          ctx.translate(e.x, e.y);
+          
+          // Outer Glow
+          ctx.shadowBlur = 25;
+          ctx.shadowColor = color;
+
+          const timeSlow = Date.now() / 1500;
+          const timeFast = Date.now() / 300;
+
+          const drawPolygon = (sides: number, rad: number) => {
+            ctx.beginPath();
+            for(let i=0; i<sides; i++){
+              const angle = i * Math.PI*2 / sides;
+              if(i===0) ctx.moveTo(Math.cos(angle)*rad, Math.sin(angle)*rad);
+              else ctx.lineTo(Math.cos(angle)*rad, Math.sin(angle)*rad);
+            }
+            ctx.closePath();
+          };
+
+          if (e.bossType === 'titan') {
+            // The Monolith: Massive intricate overlapping polygons
+            ctx.rotate(timeSlow);
+            
+            // Outer Octagon Base
+            ctx.fillStyle = '#0a0005';
+            drawPolygon(8, 45);
+            ctx.fill();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Inner Hexagon
+            ctx.rotate(-timeSlow * 2.5);
+            ctx.fillStyle = 'rgba(255, 0, 80, 0.1)';
+            drawPolygon(6, 35);
+            ctx.fill();
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            // Core Cross
+            ctx.rotate(timeSlow * 4);
+            const p = 15 + Math.sin(timeFast) * 5;
+            ctx.fillStyle = color;
+            ctx.fillRect(-p, -p/3, p*2, p/(1.5));
+            ctx.fillRect(-p/3, -p, p/(1.5), p*2);
+            
+          } else if (e.bossType === 'tank') {
+            // The Fortress: Heavy Cross blocks that spin
+            ctx.rotate(timeSlow * 0.8);
+
+            ctx.fillStyle = '#110500';
+            ctx.shadowBlur = 10;
+            
+            // 4 massive blocks
+            for(let i=0; i<4; i++) {
+              ctx.rotate(Math.PI/2);
+              ctx.fillRect(10, -20, 25, 40);
+              ctx.strokeStyle = color;
+              ctx.lineWidth = 3;
+              ctx.strokeRect(10, -20, 25, 40);
+              
+              // Shield nodes
+              ctx.beginPath();
+              ctx.arc(45, 0, 5, 0, Math.PI*2);
+              ctx.fillStyle = '#ff8800';
+              ctx.fill();
+            }
+
+            // Core
+            ctx.fillStyle = color;
+            ctx.shadowBlur = 30;
+            drawPolygon(4, 18);
+            ctx.fill();
+
+          } else if (e.bossType === 'stealth') {
+            // The Phantom: Dagger shuriken with ghost trails
+            const ghostCount = 3;
+            for(let g = ghostCount; g >= 0; g--) {
+              ctx.save();
+              // Ghost trailing calculation
+              ctx.rotate((timeSlow * 2) - (g * 0.15));
+              ctx.globalAlpha = g === 0 ? 1 : 0.15;
+              ctx.shadowBlur = g === 0 ? 25 : 0;
+              
+              const pulse = Math.sin(timeFast) * 10;
+              for(let i=0; i<4; i++) {
+                ctx.rotate(Math.PI/2);
+                ctx.beginPath();
+                ctx.moveTo(10, 0);
+                ctx.lineTo(40 + pulse, 5);
+                ctx.lineTo(40 + pulse, -5);
+                ctx.closePath();
+                ctx.fillStyle = g === 0 ? color : '#fff';
+                ctx.fill();
+              }
+              
+              // Core ring
+              ctx.beginPath();
+              ctx.arc(0, 0, 10, 0, Math.PI*2);
+              ctx.fillStyle = '#111';
+              ctx.fill();
+              ctx.lineWidth = 2;
+              ctx.strokeStyle = color;
+              ctx.stroke();
+              
+              ctx.restore();
+            }
+
+          } else {
+            // The Hive (Swarm): Multiple bands of fast-orbiting matter
+            ctx.beginPath();
+            ctx.arc(0, 0, 12, 0, Math.PI * 2);
+            ctx.fillStyle = '#050511';
+            ctx.fill();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Inner fast ring
+            for(let i=0; i<5; i++) {
+              const angle = (i * Math.PI*2) / 5 + timeFast;
+              const sx = Math.cos(angle) * 22;
+              const sy = Math.sin(angle) * 22;
+              ctx.beginPath();
+              ctx.arc(sx, sy, 4, 0, Math.PI*2);
+              ctx.fillStyle = '#fff';
+              ctx.fill();
+            }
+
+            // Outer slow counter-ring
+            for(let i=0; i<8; i++) {
+              const angle = (i * Math.PI*2) / 8 - timeSlow * 3;
+              const orbitR = 38 + Math.sin(timeFast * 0.5 + i) * 6;
+              const sx = Math.cos(angle) * orbitR;
+              const sy = Math.sin(angle) * orbitR;
+              
+              ctx.save();
+              ctx.translate(sx, sy);
+              ctx.rotate(timeFast * 2);
+              drawPolygon(3, 8); // Triangles
+              ctx.fillStyle = color;
+              ctx.fill();
+              ctx.restore();
+            }
+          }
+          ctx.restore();
+          
+          // Epic Laser Beam for Tower Destruction
+          if (e.targetTowerId) {
+             const t = towersRef.current.find(t => t.id === e.targetTowerId);
+             if (t) {
+               // Draw the destructive Laser
+               ctx.save();
+               ctx.beginPath();
+               ctx.moveTo(e.x, e.y);
+               ctx.lineTo(t.x, t.y);
+               
+               // Outer Red Glow
+               ctx.strokeStyle = 'rgba(255, 0, 0, 0.4)';
+               ctx.lineWidth = 15 + Math.random() * 5; 
+               ctx.shadowBlur = 30;
+               ctx.shadowColor = '#ff0000';
+               ctx.stroke();
+               
+               // Inner White Core
+               ctx.beginPath();
+               ctx.moveTo(e.x, e.y);
+               ctx.lineTo(t.x, t.y);
+               ctx.strokeStyle = '#ffffff';
+               ctx.lineWidth = 4 + Math.random() * 2;
+               ctx.shadowBlur = 10;
+               ctx.stroke();
+               
+               // Impact Particles on the Tower
+               const impactPulse = Math.random() * 15;
+               ctx.beginPath();
+               ctx.arc(t.x, t.y, 10 + impactPulse, 0, Math.PI * 2);
+               ctx.fillStyle = '#ffffff';
+               ctx.fill();
+               ctx.beginPath();
+               ctx.arc(t.x, t.y, 20 + impactPulse, 0, Math.PI * 2);
+               ctx.strokeStyle = '#ff0000';
+               ctx.lineWidth = 3;
+               ctx.stroke();
+               
+               ctx.restore();
+             }
+          }
+        } else {
+          // Normal Enemy Body
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.arc(e.x, e.y, radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
 
         // Slow Effect Visual
         if (e.type !== 'phantom' && e.slowTimer && e.slowTimer > 0) {
@@ -659,7 +1044,7 @@ export default function Game() {
           ctx.strokeStyle = 'rgba(68, 136, 255, 0.8)';
           ctx.lineWidth = 3;
           ctx.beginPath();
-          ctx.arc(e.x, e.y, radius + 5, 0, Math.PI * 2);
+          ctx.arc(e.x, e.y, radius + 7.5, 0, Math.PI * 2);
           ctx.stroke();
           
           // Shield Bar
@@ -674,7 +1059,7 @@ export default function Game() {
           ctx.strokeStyle = `rgba(0, 255, 136, ${0.2 * pulse})`;
           ctx.lineWidth = 2;
           ctx.beginPath();
-          ctx.arc(e.x, e.y, 100 * pulse, 0, Math.PI * 2);
+          ctx.arc(e.x, e.y, 150 * pulse, 0, Math.PI * 2);
           ctx.stroke();
         }
 
@@ -683,7 +1068,7 @@ export default function Game() {
           ctx.strokeStyle = '#fff';
           ctx.lineWidth = 2;
           ctx.beginPath();
-          ctx.arc(e.x, e.y, radius + 3, 0, Math.PI * 2);
+          ctx.arc(e.x, e.y, radius + 4.5, 0, Math.PI * 2);
           ctx.stroke();
         } else if (e.type === 'splitter') {
           ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
@@ -696,68 +1081,204 @@ export default function Game() {
           ctx.setLineDash([2, 2]);
           ctx.strokeStyle = '#fff';
           ctx.beginPath();
-          ctx.arc(e.x, e.y, radius + 4, 0, Math.PI * 2);
+          ctx.arc(e.x, e.y, radius + 6, 0, Math.PI * 2);
           ctx.stroke();
           ctx.setLineDash([]);
         }
 
         // Health Bar
-        const healthPercent = e.health / e.maxHealth;
-        const barWidth = radius * 2.5;
-        ctx.fillStyle = '#333';
-        ctx.fillRect(e.x - barWidth / 2, e.y - radius - 8, barWidth, 4);
-        ctx.fillStyle = healthPercent > 0.5 ? '#00ff44' : (healthPercent > 0.2 ? '#ffff00' : '#ff4400');
-        ctx.fillRect(e.x - barWidth / 2, e.y - radius - 8, barWidth * healthPercent, 4);
+        if (e.health < e.maxHealth) {
+          const healthPercent = e.health / e.maxHealth;
+          const barWidth = radius * 1.8;
+          const barHeight = 3;
+          ctx.fillStyle = '#333';
+          ctx.fillRect(e.x - barWidth / 2, e.y - radius - 6, barWidth, barHeight);
+          ctx.fillStyle = healthPercent > 0.5 ? '#00ff44' : (healthPercent > 0.2 ? '#ffff00' : '#ff4400');
+          ctx.fillRect(e.x - barWidth / 2, e.y - radius - 6, barWidth * healthPercent, barHeight);
+        }
       });
 
       // Draw Soldiers
       soldiersRef.current.forEach(s => {
-        // Body
-        ctx.fillStyle = '#4488ff';
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, 10, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.save();
         
-        // Sword
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(s.x + 8, s.y - 8);
-        ctx.lineTo(s.x + 15, s.y - 15);
-        ctx.stroke();
+        const pulse = (Math.sin(Date.now() / 200) + 1) / 2;
+
+        if (s.level === 1) {
+          // Level 1: "Primitive Droid" (Rusty, low-tech)
+          const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, 14);
+          grad.addColorStop(0, '#885544');
+          grad.addColorStop(1, '#332211');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, 14, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Flickering red eye
+          ctx.fillStyle = pulse > 0.5 ? '#ff0000' : '#880000';
+          ctx.beginPath();
+          ctx.arc(s.x + 4, s.y - 4, 3, 0, Math.PI * 2);
+          ctx.fill();
+
+        } else if (s.level === 2) {
+          // Level 2: "Combat Unit" (Industrial Blue, Basic Sword)
+          ctx.shadowBlur = 5;
+          ctx.shadowColor = '#0066ff';
+          
+          const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, 14);
+          grad.addColorStop(0, '#66aaff');
+          grad.addColorStop(1, '#003388');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, 14, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Core Pulse
+          ctx.fillStyle = '#fff';
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, 3, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Basic Energy Sword
+          ctx.strokeStyle = '#00aaff';
+          ctx.lineWidth = 3;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(s.x + 8, s.y - 8);
+          ctx.lineTo(s.x + 18, s.y - 18);
+          ctx.stroke();
+
+        } else if (s.level === 3) {
+          // Level 3: "Tactical Operative" (Neon blue, Shield, Sword)
+          ctx.shadowBlur = 10 + (pulse * 5);
+          ctx.shadowColor = '#4488ff';
+
+          const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, 15);
+          grad.addColorStop(0, '#fff');
+          grad.addColorStop(0.3, '#4488ff');
+          grad.addColorStop(1, '#001a4d');
+          
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, 15, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Shield
+          ctx.strokeStyle = '#00f2ff';
+          ctx.lineWidth = 3;
+          ctx.shadowBlur = 15;
+          ctx.beginPath();
+          const shieldAngle = (Date.now() / 1000) % (Math.PI * 2);
+          ctx.arc(s.x, s.y, 18, shieldAngle, shieldAngle + Math.PI / 2);
+          ctx.stroke();
+
+          // Energy Sword
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 4;
+          ctx.shadowColor = '#4488ff';
+          ctx.shadowBlur = 20;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(s.x + 10, s.y - 10);
+          ctx.lineTo(s.x + 22, s.y - 22);
+          ctx.stroke();
+          
+          // Core Pulse
+          ctx.fillStyle = '#fff';
+          ctx.shadowBlur = 5;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, 3 + (pulse * 2), 0, Math.PI * 2);
+          ctx.fill();
+
+        } else {
+          // Level 4+: "Elite Sentinel" (Gold/White, Dual Swords, Overcharged)
+          ctx.shadowBlur = 20 + (pulse * 10);
+          ctx.shadowColor = '#ffaa00';
+
+          const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, 16);
+          grad.addColorStop(0, '#ffffff');
+          grad.addColorStop(0.4, '#ffdd00');
+          grad.addColorStop(1, '#664400');
+          
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, 16, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Full Shield (Dashed energy ring)
+          ctx.strokeStyle = '#ffee77';
+          ctx.lineWidth = 2;
+          ctx.shadowBlur = 20;
+          ctx.setLineDash([5, 5]);
+          ctx.beginPath();
+          
+          // Rotate dash slightly based on time
+          ctx.lineDashOffset = -(Date.now() / 50) % 10;
+          ctx.arc(s.x, s.y, 22, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]); // reset
+
+          // Dual Swords
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 4;
+          ctx.shadowColor = '#ffcc00';
+          ctx.shadowBlur = 25;
+          ctx.lineCap = 'round';
+          
+          // Sword 1 (Right)
+          ctx.beginPath();
+          ctx.moveTo(s.x + 10, s.y - 10);
+          ctx.lineTo(s.x + 24, s.y - 24);
+          ctx.stroke();
+
+          // Sword 2 (Left)
+          ctx.beginPath();
+          ctx.moveTo(s.x - 10, s.y - 10);
+          ctx.lineTo(s.x - 24, s.y - 24);
+          ctx.stroke();
+          
+          // Core Pulse
+          ctx.fillStyle = '#fff';
+          ctx.shadowBlur = 10;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, 4 + (pulse * 3), 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        ctx.restore();
         
-        // Health Bar
-        const healthPercent = s.health / s.maxHealth;
-        ctx.fillStyle = '#333';
-        ctx.fillRect(s.x - 10, s.y - 15, 20, 3);
-        ctx.fillStyle = '#4488ff';
-        ctx.fillRect(s.x - 10, s.y - 15, 20 * healthPercent, 3);
+        // 5. Health Bar (Proportional to enemy style)
+        if (s.health < s.maxHealth) {
+          const healthPercent = s.health / s.maxHealth;
+          const barWidth = 30; // radius * 2
+          const barHeight = 3;
+          ctx.fillStyle = '#333';
+          ctx.fillRect(s.x - barWidth / 2, s.y - 22, barWidth, barHeight);
+          ctx.fillStyle = '#4488ff';
+          ctx.fillRect(s.x - barWidth / 2, s.y - 22, barWidth * healthPercent, barHeight);
+        }
       });
 
       // Draw Projectiles
       ctx.fillStyle = '#fff';
       ctx.beginPath();
       projectilesRef.current.forEach(p => {
-        ctx.moveTo(p.x + 3, p.y);
-        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+        ctx.moveTo(p.x + 4.5, p.y);
+        ctx.arc(p.x, p.y, 4.5, 0, Math.PI * 2);
       });
       ctx.fill();
 
       // Draw Placement Ghost
+      /*
       if (selectedTowerType) {
         const stats = TOWER_STATS[selectedTowerType];
+        const targetX = mousePos.x;
+        const targetY = mousePos.y;
         
-        // Find nearest visible slot
-        const nearestSlot = slotsRef.current.find(s => {
-          if (!s.isVisible) return false;
-          const dx = s.x - mousePos.x;
-          const dy = s.y - mousePos.y;
-          return Math.sqrt(dx * dx + dy * dy) < 40;
-        });
-
-        const targetX = nearestSlot ? nearestSlot.x : mousePos.x;
-        const targetY = nearestSlot ? nearestSlot.y : mousePos.y;
-        const canPlace = nearestSlot && nearestSlot.isPurchased && !nearestSlot.hasTower;
+        const isPathClear = !isNearPath(targetX, targetY);
+        const isTowerClear = !isOverlappingTower(targetX, targetY);
+        const underLimit = towersRef.current.length < 10;
+        const canPlace = isPathClear && isTowerClear && underLimit;
         const canAfford = gameStateRef.current.gold >= stats.cost;
         
         ctx.beginPath();
@@ -767,21 +1288,27 @@ export default function Game() {
         
         ctx.fillStyle = stats.color;
         ctx.globalAlpha = 0.5;
-        ctx.fillRect(targetX - 15, targetY - 15, 30, 30);
+        ctx.fillRect(targetX - 22.5, targetY - 22.5, 45, 45);
         ctx.globalAlpha = 1.0;
 
-        if (nearestSlot && !nearestSlot.isPurchased) {
-          ctx.fillStyle = '#fff';
-          ctx.font = '10px monospace';
+        if (!underLimit) {
+          ctx.fillStyle = '#ff0000';
+          ctx.font = 'bold 12px monospace';
           ctx.textAlign = 'center';
-          ctx.fillText("LOCKED SLOT", targetX, targetY - 25);
+          ctx.fillText("MAX TOWERS REACHED", targetX, targetY - 30);
+        } else if (!isPathClear) {
+          ctx.fillStyle = '#ff0000';
+          ctx.font = 'bold 12px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText("TOO CLOSE TO PATH", targetX, targetY - 30);
         }
       }
+      */
     };
 
     animationFrameId = requestAnimationFrame(update);
     return () => cancelAnimationFrame(animationFrameId);
-  }, [spawnWave]);
+  }, [spawnWave, PATH]);
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (gameState.isPaused || gameState.isGameOver) return;
@@ -796,7 +1323,7 @@ export default function Game() {
     const clickedTower = towersRef.current.find(t => {
       const dx = t.x - x;
       const dy = t.y - y;
-      return Math.sqrt(dx * dx + dy * dy) < 20;
+      return Math.sqrt(dx * dx + dy * dy) < 30;
     });
 
     if (clickedTower) {
@@ -805,39 +1332,20 @@ export default function Game() {
       return;
     }
 
-    // 2. Check if clicking on a visible slot
-    const clickedSlot = slotsRef.current.find(s => {
-      if (!s.isVisible) return false;
-      const dx = s.x - x;
-      const dy = s.y - y;
-      return Math.sqrt(dx * dx + dy * dy) < 25;
-    });
-
-    if (clickedSlot) {
-      if (!clickedSlot.isPurchased) {
-        // Try to purchase slot
-        if (gameState.gold >= SLOT_COST) {
-          clickedSlot.isPurchased = true;
-          setGameState(prev => ({ ...prev, gold: prev.gold - SLOT_COST }));
-          
-          // UNLOCK NEXT SLOT
-          const nextSlot = slotsRef.current.find(s => !s.isVisible);
-          if (nextSlot) {
-            nextSlot.isVisible = true;
-          }
-        }
-        return;
-      }
-
-      if (clickedSlot.isPurchased && !clickedSlot.hasTower && selectedTowerType) {
-        // Try to place tower
+    // 2. Free Placement Logic
+    if (selectedTowerType) {
+      const isPathClear = !isNearPath(x, y);
+      const isTowerClear = !isOverlappingTower(x, y);
+      const underLimit = towersRef.current.length < 10;
+      
+      if (isPathClear && isTowerClear && underLimit) {
         const stats = TOWER_STATS[selectedTowerType];
         if (gameState.gold >= stats.cost) {
           const newTower: Tower = {
             id: Math.random().toString(36).substr(2, 9),
             type: selectedTowerType,
-            x: clickedSlot.x,
-            y: clickedSlot.y,
+            x,
+            y,
             range: stats.range,
             damage: stats.damage,
             fireRate: stats.fireRate,
@@ -845,14 +1353,18 @@ export default function Game() {
             targetId: null,
             level: 1,
             cost: stats.cost,
+            health: stats.maxHealth,
+            maxHealth: stats.maxHealth,
           };
           towersRef.current = [...towersRef.current, newTower];
-          clickedSlot.hasTower = true;
           setGameState(prev => ({ ...prev, gold: prev.gold - stats.cost }));
-          setSelectedTowerType(null);
         }
-        return;
       }
+      
+      // Whether successful or not, clicking the canvas while holding a tower 
+      // attempts to place it. If it fails, we cancel the selection so it doesn't get stuck.
+      setSelectedTowerType(null);
+      return;
     }
 
     // 3. If clicking empty space, deselect
@@ -882,6 +1394,18 @@ export default function Game() {
     setGameState(prev => ({ ...prev, gold: prev.gold - upgradeCost }));
   };
 
+  const sellTower = (towerId: string) => {
+    const tower = towersRef.current.find(t => t.id === towerId);
+    if (!tower) return;
+
+    // Refund 50% of the CURRENT cost (which scales with level)
+    const refund = Math.floor(tower.cost * 0.5);
+    
+    towersRef.current = towersRef.current.filter(t => t.id !== towerId);
+    setGameState(prev => ({ ...prev, gold: prev.gold + refund }));
+    setSelectedTowerId(null);
+  };
+
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -902,6 +1426,16 @@ export default function Game() {
         <div className="flex items-center gap-3 bg-black/60 backdrop-blur-md border border-white/10 px-4 py-2 rounded-lg pointer-events-auto shadow-xl">
           <Heart className="w-5 h-5 text-red-500" />
           <span className="text-2xl font-mono font-bold tracking-tighter">{gameState.lives}</span>
+        </div>
+        <div className="flex items-center gap-3 bg-black/60 backdrop-blur-md border border-white/10 px-4 py-2 rounded-lg pointer-events-auto shadow-xl">
+          <Radio className={`w-5 h-5 ${towersRef.current.length >= 10 ? 'text-red-500' : 'text-blue-400'}`} />
+          <span className={`text-2xl font-mono font-bold tracking-tighter ${towersRef.current.length >= 10 ? 'text-red-500' : 'text-white'}`}>
+            {towersRef.current.length}/10
+          </span>
+        </div>
+        <div className="flex items-center gap-3 bg-black/60 backdrop-blur-md border border-white/10 px-4 py-2 rounded-lg pointer-events-auto shadow-xl">
+          <Target className="w-5 h-5 text-purple-400" />
+          <span className="text-2xl font-mono font-bold tracking-tighter">{gameState.enemiesKilled}</span>
         </div>
       </div>
 
@@ -958,6 +1492,13 @@ export default function Game() {
                           {tower.type === 'laser' && <Zap className="w-6 h-6" />}
                           {tower.type === 'plasma' && <Crosshair className="w-6 h-6" />}
                           {tower.type === 'slow' && <Target className="w-6 h-6" />}
+                          {tower.type === 'railgun' && <Radio className="w-6 h-6" />}
+                          {tower.type === 'tesla' && <Activity className="w-6 h-6" />}
+                          {tower.type === 'minigun' && <Flame className="w-6 h-6" />}
+                          {tower.type === 'pulse' && <Sun className="w-6 h-6" />}
+                          {tower.type === 'frost' && <Snowflake className="w-6 h-6" />}
+                          {tower.type === 'beam' && <Wand className="w-6 h-6" />}
+                          {tower.type === 'artillery' && <Bomb className="w-6 h-6" />}
                         </div>
                         <div>
                           <p className="text-sm font-bold uppercase tracking-widest">{tower.type}</p>
@@ -986,6 +1527,14 @@ export default function Game() {
                       >
                         <Coins className="w-4 h-4" />
                         Upgrade ({upgradeCost})
+                      </button>
+
+                      <button
+                        onClick={() => sellTower(selectedTowerId)}
+                        className="w-full py-3 flex items-center justify-center gap-2 font-bold uppercase tracking-widest text-xs transition-all bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20"
+                      >
+                        <Trash className="w-4 h-4" />
+                        Sell ({Math.floor(tower.cost * 0.5)})
                       </button>
                     </>
                   );
@@ -1022,34 +1571,62 @@ export default function Game() {
 
                 <div className="flex flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar">
                   {/* Army Protocol */}
-                  <div className="shrink-0 mb-2">
-                    <h4 className="text-[10px] uppercase tracking-[0.2em] text-white/30 mb-3">Special Operations</h4>
-                    <button
-                      onClick={spawnArmy}
-                      disabled={gameState.gold < 100}
-                      className={`
-                        w-full p-4 rounded-xl border flex items-center gap-4 transition-all group
-                        ${gameState.gold >= 100 
-                          ? 'bg-blue-500/10 border-blue-500/30 hover:bg-blue-500/20 hover:border-blue-500/50' 
-                          : 'bg-white/5 border-white/5 opacity-50 cursor-not-allowed'}
-                      `}
-                    >
-                      <div className="w-12 h-12 rounded-lg bg-blue-500/20 flex items-center justify-center border border-blue-500/30 group-hover:scale-110 transition-transform">
-                        <Users className="w-6 h-6 text-blue-400" />
+                  <div className="shrink-0 mb-4 bg-blue-500/5 border border-blue-500/10 rounded-xl overflow-hidden">
+                    <div className="p-4 border-b border-blue-500/10 bg-blue-500/5 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-blue-400" />
+                        <span className="text-[10px] uppercase tracking-[0.2em] font-black text-blue-400">Army Protocol</span>
                       </div>
-                      <div className="flex-1 text-left">
-                        <p className="text-sm font-bold uppercase tracking-widest text-blue-400">Deploy Army</p>
-                        <p className="text-[10px] text-gray-500 uppercase">5 Soldiers • 100 Gold</p>
+                      <span className="text-[10px] font-mono font-bold bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">LVL {gameState.armyLevel}</span>
+                    </div>
+
+                    <div className="p-4 flex flex-col gap-3">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-black/40 p-2 border border-white/5 rounded">
+                          <span className="block text-[8px] uppercase text-gray-500 mb-1">Squad HP</span>
+                          <span className="block text-xs font-mono">{Math.floor(60 * (1 + (gameState.armyLevel - 1) * 0.7))}</span>
+                        </div>
+                        <div className="bg-black/40 p-2 border border-white/5 rounded">
+                          <span className="block text-[8px] uppercase text-gray-500 mb-1">Squad DMG</span>
+                          <span className="block text-xs font-mono">{Math.floor(15 * (1 + (gameState.armyLevel - 1) * 0.6))}</span>
+                        </div>
                       </div>
-                      <Sword className="w-4 h-4 text-blue-500/50" />
-                    </button>
+
+                      <div className="flex flex-col gap-2">
+                        <button
+                          onClick={spawnArmy}
+                          disabled={gameState.gold < 75 || soldiersRef.current.length >= 10}
+                          className={`
+                            w-full py-2 rounded border flex items-center justify-center gap-2 transition-all
+                            ${gameState.gold >= 75 && soldiersRef.current.length < 10 ? 'bg-blue-500 text-white border-blue-400 hover:bg-blue-400' : 'bg-white/5 border-white/5 text-white/20 cursor-not-allowed'}
+                          `}
+                        >
+                          <Sword className="w-3 h-3" />
+                          <span className="text-[10px] uppercase font-bold tracking-widest text-center">
+                            {soldiersRef.current.length >= 10 ? 'Max Army (10/10)' : 'Deploy (75)'}
+                          </span>
+                        </button>
+
+                        <button
+                          onClick={upgradeArmy}
+                          disabled={gameState.gold < gameState.armyLevel * 200}
+                          className={`
+                            w-full py-2 rounded border flex items-center justify-center gap-2 transition-all
+                            ${gameState.gold >= gameState.armyLevel * 200 ? 'bg-white text-black border-white hover:bg-green-400' : 'bg-white/5 border-white/5 text-white/20 cursor-not-allowed'}
+                          `}
+                        >
+                          <Coins className="w-3 h-3" />
+                          <span className="text-[10px] uppercase font-bold tracking-widest">Upgrade ({gameState.armyLevel * 200})</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="shrink-0 mb-2">
                     <h4 className="text-[10px] uppercase tracking-[0.2em] text-white/30 mb-3">Tower Units</h4>
                   </div>
 
-                  {(['laser', 'plasma', 'slow'] as TowerType[]).map(type => {
+                  {(Object.keys(TOWER_STATS) as TowerType[]).sort((a, b) => TOWER_STATS[a].cost - TOWER_STATS[b].cost).map(type => {
                     const stats = TOWER_STATS[type];
                     const isSelected = selectedTowerType === type;
                     const canAfford = gameState.gold >= stats.cost;
@@ -1083,11 +1660,25 @@ export default function Game() {
                             {type === 'laser' && <Zap className="w-6 h-6" />}
                             {type === 'plasma' && <Crosshair className="w-6 h-6" />}
                             {type === 'slow' && <Target className="w-6 h-6" />}
+                            {type === 'railgun' && <Radio className="w-6 h-6" />}
+                            {type === 'tesla' && <Activity className="w-6 h-6" />}
+                            {type === 'minigun' && <Flame className="w-6 h-6" />}
+                            {type === 'pulse' && <Sun className="w-6 h-6" />}
+                            {type === 'frost' && <Snowflake className="w-6 h-6" />}
+                            {type === 'beam' && <Wand className="w-6 h-6" />}
+                            {type === 'artillery' && <Bomb className="w-6 h-6" />}
                           </div>
                           <div className={`text-[10px] text-left leading-tight ${isSelected ? 'text-black/60' : 'text-gray-500'}`}>
                             {type === 'laser' && "Rapid fire light beam."}
                             {type === 'plasma' && "Heavy energy blast."}
                             {type === 'slow' && "Slows enemy movement."}
+                            {type === 'railgun' && "High-damage long range beam."}
+                            {type === 'tesla' && "Rapid electrical discharge."}
+                            {type === 'minigun' && "Very high fire rate."}
+                            {type === 'pulse' && "Moderate AOE damage."}
+                            {type === 'frost' && "Heavy slow effect."}
+                            {type === 'beam' && "Continuous energy stream."}
+                            {type === 'artillery' && "Massive long-range explosion."}
                           </div>
                         </div>
                       </button>
@@ -1132,6 +1723,23 @@ export default function Game() {
                 >
                   Reboot System
                 </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Boss Alert Overlay */}
+          <AnimatePresence>
+            {gameState.isBossAlert && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 bg-black/80 backdrop-blur-md flex flex-col items-center justify-center z-50 overflow-hidden"
+              >
+                <div className="absolute inset-0 bg-red-600/10 animate-[pulse_0.2s_ease-in-out_infinite] pointer-events-none" />
+                <h2 className="text-[140px] font-black italic tracking-tighter text-red-600 mb-4 transform -skew-x-12 animate-[pulse_0.5s_ease-in-out_infinite] drop-shadow-[0_0_50px_rgba(255,0,0,0.8)]">
+                  ¡JEFE!
+                </h2>
               </motion.div>
             )}
           </AnimatePresence>
