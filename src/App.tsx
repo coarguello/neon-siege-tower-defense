@@ -21,7 +21,11 @@ export default function App() {
       {screen === 'start' ? (
         <StartScreen onStart={handleStart} />
       ) : (
-        <Game difficulty={difficulty} mapLayout={selectedMap} />
+        <Game 
+          difficulty={difficulty} 
+          mapLayout={selectedMap} 
+          onReturnToMenu={() => setScreen('start')}
+        />
       )}
     </div>
   );

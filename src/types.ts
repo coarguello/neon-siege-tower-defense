@@ -81,6 +81,7 @@ export interface GameState {
   isGameOver: boolean;
   isBossAlert?: boolean; // Controls visual flashing drill sequence
   enemiesKilled: number;
+  isBugReportOpen?: boolean;
 }
 
 export interface MapLayout {

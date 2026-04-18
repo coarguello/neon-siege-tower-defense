@@ -14,12 +14,18 @@ const getInitialState = (diff: DifficultyLevel): GameState => {
   }
 };
 
+interface GoldPopup {
+  id: number;
+  amount: number;
+}
+
 interface GameProps {
   difficulty: DifficultyLevel;
   mapLayout: MapLayout;
+  onReturnToMenu: () => void;
 }
 
-export default function Game({ difficulty, mapLayout }: GameProps) {
+export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProps) {
   const PATH = mapLayout.path;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState, setGameState] = useState<GameState>(getInitialState(difficulty));
@@ -28,6 +34,7 @@ export default function Game({ difficulty, mapLayout }: GameProps) {
   const [selectedTowerId, setSelectedTowerId] = useState<string | null>(null);
   const [mousePos, setMousePos] = useState<Point>({ x: 0, y: 0 });
   const [isShopOpen, setIsShopOpen] = useState(false);
+  const [goldPopups, setGoldPopups] = useState<GoldPopup[]>([]);
 
   // Game entities managed in refs to avoid React re-render overhead
   const enemiesRef = useRef<Enemy[]>([]);
@@ -36,6 +43,21 @@ export default function Game({ difficulty, mapLayout }: GameProps) {
   const projectilesRef = useRef<Projectile[]>([]);
   const gameStateRef = useRef<GameState>(gameState);
   const lastWaveTimeRef = useRef<number>(0);
+  const prevGoldRef = useRef<number>(gameState.gold);
+
+  useEffect(() => {
+    if (gameState.gold !== prevGoldRef.current && !gameState.isGameOver) {
+      const difference = gameState.gold - prevGoldRef.current;
+      const id = Date.now() + Math.random();
+      
+      setGoldPopups(prev => [...prev, { id, amount: difference }]);
+      
+      setTimeout(() => {
+        setGoldPopups(prev => prev.filter(p => p.id !== id));
+      }, 1000);
+    }
+    prevGoldRef.current = gameState.gold;
+  }, [gameState.gold, gameState.isGameOver]);
 
   // Helper distance checks for free placement
   const distToSegmentSq = (p: Point, v: Point, w: Point) => {
@@ -146,9 +168,9 @@ export default function Game({ difficulty, mapLayout }: GameProps) {
         };
         const { hp: hpMod, spd: spdMod } = diffMods[difficulty];
         
-        const speedWaveMult = 1 + (newWave * 0.015);
+        const waveScale = Math.pow(1.03, newWave - 1);
 
-        const bossHealth = Math.floor(1900 * (newWave / 5) * hpMod);
+        const bossHealth = Math.floor(1900 * (newWave / 5) * hpMod * waveScale);
         
         const bossEnemies: Enemy[] = [];
         
@@ -165,7 +187,7 @@ export default function Game({ difficulty, mapLayout }: GameProps) {
           y: startPt.y - normY * 40,
           health: bossHealth,
           maxHealth: bossHealth,
-          speed: 1.2 * spdMod * speedWaveMult,
+          speed: 1.2 * spdMod * waveScale,
           reward: 100,
           color: '#ff0000',
           waypointIndex: 0,
@@ -180,9 +202,9 @@ export default function Game({ difficulty, mapLayout }: GameProps) {
              type: 'fast',
              x: startPt.x - normX * (40 + i * 45),
              y: startPt.y - normY * (40 + i * 45),
-             health: stats.health * 1.5 * (newWave/5),
-             maxHealth: stats.health * 1.5 * (newWave/5),
-             speed: stats.speed * 1.2 * spdMod * speedWaveMult,
+             health: stats.health * 1.5 * (newWave/5) * waveScale,
+             maxHealth: stats.health * 1.5 * (newWave/5) * waveScale,
+             speed: stats.speed * 1.2 * spdMod * waveScale,
              reward: 15,
              color: '#ff0000',
              waypointIndex: 0,
@@ -255,8 +277,6 @@ export default function Game({ difficulty, mapLayout }: GameProps) {
       
       const stats = ENEMY_STATS[type];
       
-      const scalingFactor = newWave <= 10 ? 0.05 : 0.12;
-      
       const diffMods = {
         easy: { hp: 0.8, spd: 0.9 },
         medium: { hp: 1.0, spd: 1.0 },
@@ -266,10 +286,10 @@ export default function Game({ difficulty, mapLayout }: GameProps) {
       
       const { hp: hpMod, spd: spdMod } = diffMods[difficulty];
       
-      const speedWaveMult = 1 + (newWave * 0.015);
+      const waveScale = Math.pow(1.03, newWave - 1);
 
-      const hMultiplier = (1 + (newWave - 1) * scalingFactor) * hpMod;
-      const sMultiplier = (1 + (newWave - 1) * (scalingFactor * 0.5)) * hpMod;
+      const hMultiplier = waveScale * hpMod;
+      const sMultiplier = waveScale * hpMod;
 
       newEnemies.push({
         id: Math.random().toString(36).substr(2, 9),
@@ -278,7 +298,7 @@ export default function Game({ difficulty, mapLayout }: GameProps) {
         y: startPt.y - normYInit * i * 45,
         health: stats.health * hMultiplier,
         maxHealth: stats.health * hMultiplier,
-        speed: stats.speed * spdMod * speedWaveMult,
+        speed: stats.speed * spdMod * waveScale,
         reward: stats.reward,
         waypointIndex: 0,
         distanceTraveled: 0,
@@ -440,7 +460,12 @@ export default function Game({ difficulty, mapLayout }: GameProps) {
       // 1.5 Update Soldiers
       const deadSoldiers: string[] = [];
       let earnedGold = 0;
-      soldiersRef.current.forEach(soldier => {
+      
+      const waveNum = gameStateRef.current.wave;
+      const soldierFatigueFactor = Math.max(0.05, 1 - (waveNum - 1) * 0.05); // -5% damage per wave
+      const soldierDefensePenalty = 1 + (waveNum - 1) * 0.05; // +5% damage taken per wave
+
+      soldiersRef.current.forEach((soldier, i) => {
         let isEngaged = false;
 
         // Combat logic
@@ -453,8 +478,9 @@ export default function Game({ difficulty, mapLayout }: GameProps) {
             
             if (distSq < 60 * 60) { // Combat range
               isEngaged = true; // Stay in place while fighting
-              damageMap[target.id] = (damageMap[target.id] || 0) + soldier.damage * (deltaTime / 1000);
-              soldier.health -= 25 * (deltaTime / 1000);
+              // Soldiers deal less damage and take more damage based on wave fatigue
+              damageMap[target.id] = (damageMap[target.id] || 0) + (soldier.damage * soldierFatigueFactor) * (deltaTime / 1000);
+              soldier.health -= (25 * soldierDefensePenalty) * (deltaTime / 1000);
               target.engagedWith = soldier.id;
               
               if (soldier.health <= 0) {
@@ -508,20 +534,21 @@ export default function Game({ difficulty, mapLayout }: GameProps) {
         if (distance > 0) {
           const dirX = moveX / distance;
           const dirY = moveY / distance;
-          for (const other of soldiersRef.current) {
-            if (other.id !== soldier.id) {
-              const dx = other.x - soldier.x;
-              const dy = other.y - soldier.y;
-              const distSq = dx * dx + dy * dy;
+          
+          // STRICT SPATIAL HIERARCHY: Soldiers only check collisions against older soldiers (those ahead in queue)
+          for (let j = 0; j < i; j++) {
+            const other = soldiersRef.current[j];
+            const dx = other.x - soldier.x;
+            const dy = other.y - soldier.y;
+            const distSq = dx * dx + dy * dy;
 
-              // Minimum separation
-              if (distSq < 32 * 32) {
-                const dot = dirX * dx + dirY * dy;
-                // Stop entirely if someone is directly blocking our movement vector backwards along the path
-                if (dot > 0 && Math.abs(dot) > Math.sqrt(distSq) * 0.4) {
-                  canMove = false;
-                  break;
-                }
+            // Minimum separation
+            if (distSq < 32 * 32) {
+              const dot = dirX * dx + dirY * dy;
+              // Stop entirely if someone ahead is directly blocking our movement vector backwards along the path
+              if (dot > 0 && Math.abs(dot) > Math.sqrt(distSq) * 0.4) {
+                canMove = false;
+                break;
               }
             }
           }
@@ -1374,6 +1401,7 @@ export default function Game({ difficulty, mapLayout }: GameProps) {
   const upgradeTower = (towerId: string) => {
     const tower = towersRef.current.find(t => t.id === towerId);
     if (!tower) return;
+    if (tower.level >= 5) return;
 
     const upgradeCost = Math.floor(tower.cost * 1.5);
     if (gameState.gold < upgradeCost) return;
@@ -1415,13 +1443,54 @@ export default function Game({ difficulty, mapLayout }: GameProps) {
     });
   };
 
+  const handleReboot = () => {
+    enemiesRef.current = [];
+    soldiersRef.current = [];
+    towersRef.current = [];
+    projectilesRef.current = [];
+    lastWaveTimeRef.current = 0;
+    
+    // Clear selection
+    setSelectedTowerType(null);
+    setSelectedTowerId(null);
+
+    // Reset State
+    const freshState = getInitialState(difficulty);
+    setGameState(freshState);
+    gameStateRef.current = freshState;
+  };
+
   return (
     <div className="relative w-full h-screen bg-[#050505] flex font-sans text-white overflow-hidden">
       {/* HUD - Economy & Health (Top Left) */}
       <div className="absolute top-0 left-0 p-6 flex flex-col gap-2 z-50 pointer-events-none">
-        <div className="flex items-center gap-3 bg-black/60 backdrop-blur-md border border-white/10 px-4 py-2 rounded-lg pointer-events-auto shadow-xl">
+        <div className="flex items-center gap-3 bg-black/60 backdrop-blur-md border border-white/10 px-4 py-2 rounded-lg pointer-events-auto shadow-xl relative">
           <Coins className="w-5 h-5 text-yellow-400" />
           <span className="text-2xl font-mono font-bold tracking-tighter">{gameState.gold}</span>
+          
+          {/* Dynamic Floating Popups */}
+          <AnimatePresence>
+            {goldPopups.map((popup) => (
+              <motion.div
+                key={popup.id}
+                initial={{ opacity: 0, y: popup.amount > 0 ? 0 : -10, scale: 0.5 }}
+                animate={{ 
+                  opacity: 1, 
+                  y: popup.amount > 0 ? -30 : 20, 
+                  scale: 1 
+                }}
+                exit={{ opacity: 0, filter: 'blur(4px)' }}
+                transition={{ duration: 0.8, ease: "easeOut" }}
+                className={`absolute right-[-45px] top-[20%] font-black font-mono text-xl pointer-events-none ${
+                  popup.amount > 0 
+                    ? 'text-green-400 drop-shadow-[0_0_8px_rgba(74,222,128,0.8)]' 
+                    : 'text-red-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]'
+                }`}
+              >
+                {popup.amount > 0 ? '+' : ''}{popup.amount}
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </div>
         <div className="flex items-center gap-3 bg-black/60 backdrop-blur-md border border-white/10 px-4 py-2 rounded-lg pointer-events-auto shadow-xl">
           <Heart className="w-5 h-5 text-red-500" />
@@ -1452,12 +1521,6 @@ export default function Game({ difficulty, mapLayout }: GameProps) {
           >
             {gameState.isPaused ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
           </button>
-          <button 
-            onClick={() => window.location.reload()}
-            className="p-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors backdrop-blur-md"
-          >
-            <RotateCcw className="w-5 h-5" />
-          </button>
         </div>
       </div>
 
@@ -1479,6 +1542,7 @@ export default function Game({ difficulty, mapLayout }: GameProps) {
                   const stats = TOWER_STATS[tower.type];
                   const upgradeCost = Math.floor(tower.cost * 1.5);
                   const canAfford = gameState.gold >= upgradeCost;
+                  const isMaxLevel = tower.level >= 5;
 
                   return (
                     <>
@@ -1506,28 +1570,36 @@ export default function Game({ difficulty, mapLayout }: GameProps) {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="bg-white/5 p-2 rounded border border-white/5">
-                          <p className="text-[8px] uppercase text-gray-500">Damage</p>
-                          <p className="text-xs font-mono">{Math.floor(tower.damage)} <span className="text-green-400">→ {Math.floor(tower.damage * 1.3)}</span></p>
+                      {isMaxLevel ? (
+                        <div className="text-center py-3 text-red-500 font-bold uppercase tracking-widest text-xs border border-red-500/20 bg-red-500/5">
+                          Maximum Level Reached
                         </div>
-                        <div className="bg-white/5 p-2 rounded border border-white/5">
-                          <p className="text-[8px] uppercase text-gray-500">Range</p>
-                          <p className="text-xs font-mono">{Math.floor(tower.range)} <span className="text-green-400">→ {Math.floor(tower.range * 1.1)}</span></p>
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => upgradeTower(selectedTowerId)}
-                        disabled={!canAfford}
-                        className={`
-                          w-full py-3 flex items-center justify-center gap-2 font-bold uppercase tracking-widest text-xs transition-all
-                          ${canAfford ? 'bg-white text-black hover:bg-green-400' : 'bg-white/5 text-white/20 cursor-not-allowed'}
-                        `}
-                      >
-                        <Coins className="w-4 h-4" />
-                        Upgrade ({upgradeCost})
-                      </button>
+                      ) : (
+                        <>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="bg-white/5 p-2 rounded border border-white/5">
+                              <p className="text-[8px] uppercase text-gray-500">Damage</p>
+                              <p className="text-xs font-mono">{Math.floor(tower.damage)} <span className="text-green-400">→ {Math.floor(tower.damage * 1.3)}</span></p>
+                            </div>
+                            <div className="bg-white/5 p-2 rounded border border-white/5">
+                              <p className="text-[8px] uppercase text-gray-500">Range</p>
+                              <p className="text-xs font-mono">{Math.floor(tower.range)} <span className="text-green-400">→ {Math.floor(tower.range * 1.1)}</span></p>
+                            </div>
+                          </div>
+                          
+                          <button
+                            onClick={() => upgradeTower(selectedTowerId)}
+                            disabled={!canAfford}
+                            className={`
+                              w-full py-3 flex items-center justify-center gap-2 font-bold uppercase tracking-widest text-xs transition-all
+                              ${canAfford ? 'bg-white text-black hover:bg-green-400' : 'bg-white/5 text-white/20 cursor-not-allowed'}
+                            `}
+                          >
+                            <Coins className="w-4 h-4" />
+                            Upgrade ({upgradeCost})
+                          </button>
+                        </>
+                      )}
 
                       <button
                         onClick={() => sellTower(selectedTowerId)}
@@ -1717,12 +1789,20 @@ export default function Game({ difficulty, mapLayout }: GameProps) {
               >
                 <h2 className="text-6xl font-black italic tracking-tighter text-red-500 mb-4 transform -skew-x-12">SYSTEM FAILURE</h2>
                 <p className="text-gray-400 mb-8 uppercase tracking-widest">The perimeter has been breached.</p>
-                <button 
-                  onClick={() => window.location.reload()}
-                  className="px-12 py-4 bg-white text-black font-bold uppercase tracking-widest transform -skew-x-12 hover:bg-red-500 transition-colors"
-                >
-                  Reboot System
-                </button>
+                <div className="flex gap-4">
+                  <button 
+                    onClick={handleReboot}
+                    className="px-8 py-4 bg-white text-black font-bold uppercase tracking-widest transform -skew-x-12 hover:bg-red-500 hover:text-white transition-colors"
+                  >
+                    Reboot System
+                  </button>
+                  <button 
+                    onClick={onReturnToMenu}
+                    className="px-8 py-4 bg-transparent border border-white text-white font-bold uppercase tracking-widest transform -skew-x-12 hover:bg-white/10 transition-colors"
+                  >
+                    Main Menu
+                  </button>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
