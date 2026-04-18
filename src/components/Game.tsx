@@ -1167,13 +1167,20 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
           ctx.fill();
 
           // Basic Energy Sword
+          const swingAngle = s.targetId ? Math.sin(Date.now() / 80) * 0.6 : 0;
+          ctx.save();
+          ctx.translate(s.x, s.y);
+          ctx.rotate(swingAngle);
+          
           ctx.strokeStyle = '#00aaff';
           ctx.lineWidth = 3;
           ctx.lineCap = 'round';
           ctx.beginPath();
-          ctx.moveTo(s.x + 8, s.y - 8);
-          ctx.lineTo(s.x + 18, s.y - 18);
+          ctx.moveTo(8, -8);
+          ctx.lineTo(18, -18);
           ctx.stroke();
+          
+          ctx.restore();
 
         } else if (s.level === 3) {
           // Level 3: "Tactical Operative" (Neon blue, Shield, Sword)
@@ -1200,15 +1207,22 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
           ctx.stroke();
 
           // Energy Sword
+          const swingAngle = s.targetId ? Math.sin(Date.now() / 80) * 0.6 : 0;
+          ctx.save();
+          ctx.translate(s.x, s.y);
+          ctx.rotate(swingAngle);
+          
           ctx.strokeStyle = '#fff';
           ctx.lineWidth = 4;
           ctx.shadowColor = '#4488ff';
           ctx.shadowBlur = 20;
           ctx.lineCap = 'round';
           ctx.beginPath();
-          ctx.moveTo(s.x + 10, s.y - 10);
-          ctx.lineTo(s.x + 22, s.y - 22);
+          ctx.moveTo(10, -10);
+          ctx.lineTo(22, -22);
           ctx.stroke();
+          
+          ctx.restore();
           
           // Core Pulse
           ctx.fillStyle = '#fff';
@@ -1246,6 +1260,11 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
           ctx.setLineDash([]); // reset
 
           // Dual Swords
+          const swingAngle = s.targetId ? Math.sin(Date.now() / 80) * 0.6 : 0;
+          ctx.save();
+          ctx.translate(s.x, s.y);
+          ctx.rotate(swingAngle);
+          
           ctx.strokeStyle = '#fff';
           ctx.lineWidth = 4;
           ctx.shadowColor = '#ffcc00';
@@ -1254,15 +1273,17 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
           
           // Sword 1 (Right)
           ctx.beginPath();
-          ctx.moveTo(s.x + 10, s.y - 10);
-          ctx.lineTo(s.x + 24, s.y - 24);
+          ctx.moveTo(10, -10);
+          ctx.lineTo(24, -24);
           ctx.stroke();
 
           // Sword 2 (Left)
           ctx.beginPath();
-          ctx.moveTo(s.x - 10, s.y - 10);
-          ctx.lineTo(s.x - 24, s.y - 24);
+          ctx.moveTo(-10, -10);
+          ctx.lineTo(-24, -24);
           ctx.stroke();
+          
+          ctx.restore();
           
           // Core Pulse
           ctx.fillStyle = '#fff';
