@@ -45,6 +45,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
   const projectilesRef = useRef<Projectile[]>([]);
   const damagePopupsRef = useRef<DamagePopup[]>([]);
   const shakeIntensityRef = useRef<number>(0);
+  const popupThrottleRef = useRef<Map<string, number>>(new Map());
   const gameStateRef = useRef<GameState>(gameState);
   const lastWaveTimeRef = useRef<number>(0);
   const prevGoldRef = useRef<number>(gameState.gold);
@@ -408,7 +409,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
             });
             if (closestTower) {
               enemy.targetTowerId = closestTower;
-              enemy.hitCooldown = 1500;
+              enemy.hitCooldown = 0; // Fire immediately on aggro for instant feedback!
             }
           }
 
@@ -697,19 +698,24 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
           const effectiveDamage = Math.max(remainingDamage > 0 ? 1 : 0, remainingDamage - (e.armor || 0));
           const newHealth = e.health - effectiveDamage;
 
-          // Spawn floating damage number
+          // Spawn floating damage number (throttled per enemy: max 1 popup per 300ms)
           if (effectiveDamage > 0) {
-            const isCrit = effectiveDamage >= 50;
-            damagePopupsRef.current.push({
-              id: Math.random().toString(36).substr(2, 9),
-              x: e.x + (Math.random() - 0.5) * 30,
-              y: e.y - 20,
-              amount: Math.round(effectiveDamage),
-              life: 1.0,
-              maxLife: 1.0,
-              isCrit,
-            });
-            if (isCrit) shakeIntensityRef.current = Math.max(shakeIntensityRef.current, 5);
+            const now = Date.now();
+            const lastPopupTime = popupThrottleRef.current.get(e.id) || 0;
+            if (now - lastPopupTime >= 300) {
+              const isCrit = effectiveDamage >= 50;
+              damagePopupsRef.current.push({
+                id: Math.random().toString(36).substr(2, 9),
+                x: e.x + (Math.random() - 0.5) * 30,
+                y: e.y - 20,
+                amount: Math.round(effectiveDamage),
+                life: 1.0,
+                maxLife: 1.0,
+                isCrit,
+              });
+              popupThrottleRef.current.set(e.id, now);
+              if (isCrit) shakeIntensityRef.current = Math.max(shakeIntensityRef.current, 5);
+            }
           }
           
           if (newHealth <= 0) {
@@ -792,17 +798,17 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      // Clear Base
-      ctx.fillStyle = '#0a0a0a';
-      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-      // Apply Screen Shake
+      // Apply Screen Shake FIRST, then clear, so the whole frame shifts
       ctx.save();
       if (shakeIntensityRef.current > 0.1) {
         const sx = (Math.random() - 0.5) * shakeIntensityRef.current;
         const sy = (Math.random() - 0.5) * shakeIntensityRef.current;
         ctx.translate(sx, sy);
       }
+
+      // Clear Base (inside shake context so it fills the translated frame)
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect(-20, -20, CANVAS_WIDTH + 40, CANVAS_HEIGHT + 40);
 
       // Draw Main Path Ground
       ctx.strokeStyle = '#222';
