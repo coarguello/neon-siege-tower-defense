@@ -138,15 +138,15 @@ class SoundEngineClass {
     this.isMusicPlaying = true;
     this.beatStep = 0;
     
-    // Un latido profundo, lento y espaciado para dar tensión Cyberpunk sin dar dolor de cabeza
-    const baseNotes = [65.41, 0, 0, 0, 60.00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; 
+    // Un latido, más audible para altavoces de notebook/celular (Frecuencias ~130Hz)
+    const baseNotes = [130.81, 0, 0, 0, 120.00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; 
     
     this.musicInterval = window.setInterval(() => {
       if (!this.isMusicPlaying || this.isMuted) return;
       const freq = baseNotes[this.beatStep % 16];
       if (freq > 0) {
-        // Usar 'sine' (curva suave) en lugar de 'square' (afilada/agresiva) y un volumen ultra bajo (0.04)
-        this.playTone(freq, 'sine', 1.0, 0.04); 
+        // 'triangle' suena suave pero contiene suficientes armónicos para ser escuchado.
+        this.playTone(freq, 'triangle', 1.0, 0.15); 
       }
       this.beatStep++;
     }, 400); // 400ms por paso = El loop entero tarda 6 segundos en repetirse
