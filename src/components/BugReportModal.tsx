@@ -27,7 +27,29 @@ const getVaultUrl = (): string => {
 let SESSION_LOCK_TIME: number | null = null;
 
 const LAST_REPORT_KEY = "gridlock_last_report_time";
-const PROFANITY_WORDS = ["puta", "mierda", "pendejo", "idiota", "estupido", "estúpido", "cabron", "cabrón", "coño", "perra", "puto", "maricon", "verga", "pinga", "polla", "zorra", "imbécil", "imbecil", "conchetumare", "chupala", "culo"];
+const PROFANITY_WORDS = ["puta", "mierda", "pendejo", "idiota", "estupido", "estupida", "cabron", "cono", "perra", "puto", "maricon", "verga", "pinga", "polla", "zorra", "imbecil", "conchetumare", "chupala", "culo", "hdp", "ctm"];
+
+// Deep normalizer: Converts leet speak, accents, punctuation tricks into plain lowercase text
+// Ensures "Pût@", "p.u.t.a", "put4", "m!3rd4" all become "puta", "mierda"
+const normalizeText = (text: string): string => {
+  return text
+    .toLowerCase()
+    // Strip accents/diacritics (á→a, é→e, ú→u, ñ→n, etc.)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    // Leet speak substitutions (most common ones)
+    .replace(/4|@/g, 'a')
+    .replace(/3/g, 'e')
+    .replace(/1|!|\|/g, 'i')
+    .replace(/0/g, 'o')
+    .replace(/5|\$/g, 's')
+    .replace(/7/g, 't')
+    .replace(/8/g, 'b')
+    .replace(/6/g, 'g')
+    .replace(/9/g, 'q')
+    .replace(/ph/g, 'f')
+    // Strip punctuation and whitespace inserted mid-word (p.u.t.a → puta, p-u-t-a → puta)
+    .replace(/[.\-_\*\s]+/g, '');
+};
 
 export default function BugReportModal({ gameState, difficulty, canvasRef, transactionLog, onClose }: BugReportModalProps) {
   const [reportText, setReportText] = useState("");
@@ -69,21 +91,22 @@ export default function BugReportModal({ gameState, difficulty, canvasRef, trans
       }
     }
 
-    // Barrier 2: Profanity Toxicity Filter
-    const normalizedText = reportText.toLowerCase();
+    // Barrier 2: Profanity Toxicity Filter (runs on NORMALIZED text to catch leet speak)
+    const rawLower = reportText.toLowerCase();
+    const normalizedText = normalizeText(reportText);
     if (PROFANITY_WORDS.some(word => normalizedText.includes(word))) {
       setSecurityWarning("SISTEMA BLOQUEADO: Lenguaje ofensivo detectado. Modere su vocabulario.");
       setIsSubmitting(false);
       return;
     }
 
-    // Barrier 3: Low-Effort Spam & Keyboard Smashing
-    if (normalizedText.length < 15) {
+    // Barrier 3: Low-Effort Spam & Keyboard Smashing (runs on rawLower to preserve spacing)
+    if (rawLower.length < 15) {
       setSecurityWarning("DATOS INSUFICIENTES: El reporte es demasiado corto para describir un problema.");
       setIsSubmitting(false);
       return;
     }
-    if (/(jaja|jeje|jiji|haha|hehe|xdxd|kkkk)/.test(normalizedText) || /(.)\1{4,}/.test(normalizedText)) {
+    if (/(jaja|jeje|jiji|haha|hehe|xdxd|kkkk)/.test(rawLower) || /(.)\1{4,}/.test(rawLower)) {
       setSecurityWarning("RUIDO DETECTADO: Secuencias repetitivas o bromas inválidas bloqueadas.");
       setIsSubmitting(false);
       return;
