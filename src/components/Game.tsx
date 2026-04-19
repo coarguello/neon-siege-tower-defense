@@ -726,6 +726,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
             earnedKills += 1;
             SoundEngine.playExplosion();
             if (e.reward > 0) SoundEngine.playCoin();
+            popupThrottleRef.current.delete(e.id); // 🧹 Clean up stale map entry
             
             // Handle Splitting
             if (e.type === 'splitter') {
