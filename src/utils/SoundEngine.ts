@@ -129,7 +129,7 @@ class SoundEngineClass {
     this.playTone(150, 'sawtooth', 0.3, 0.4);
   }
 
-  // Synthwave Music Sequencer
+  // Ambient Background Heartbeat (Replaces the traumatic repetive bass)
   startMusic() {
     if (this.isMusicPlaying) return;
     this.init(); 
@@ -138,17 +138,18 @@ class SoundEngineClass {
     this.isMusicPlaying = true;
     this.beatStep = 0;
     
-    // Secuenciador rítmico de 16 pasos basado en bajo Synthwave clásico (Do menor / C Minor)
-    const baseNotes = [65.41, 65.41, 65.41, 0, 77.78, 0, 65.41, 65.41, 65.41, 0, 98.00, 0, 65.41, 0, 77.78, 65.41]; 
+    // Un latido profundo, lento y espaciado para dar tensión Cyberpunk sin dar dolor de cabeza
+    const baseNotes = [65.41, 0, 0, 0, 60.00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; 
     
     this.musicInterval = window.setInterval(() => {
       if (!this.isMusicPlaying || this.isMuted) return;
       const freq = baseNotes[this.beatStep % 16];
       if (freq > 0) {
-        this.playTone(freq, 'square', 0.15, 0.08); // Volumen muy tenue para no cansar al jugador
+        // Usar 'sine' (curva suave) en lugar de 'square' (afilada/agresiva) y un volumen ultra bajo (0.04)
+        this.playTone(freq, 'sine', 1.0, 0.04); 
       }
       this.beatStep++;
-    }, 150); // 150ms per 16th note = ~100 BPM
+    }, 400); // 400ms por paso = El loop entero tarda 6 segundos en repetirse
   }
 
   stopMusic() {
