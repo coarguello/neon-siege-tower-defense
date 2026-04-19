@@ -11,9 +11,20 @@ interface BugReportModalProps {
   onClose: () => void;
 }
 
-// Obfuscated Vault to prevent basic crawler bots from scraping the Discord hook
-const VAULT = "aHR0cHM6Ly9kaXNjb3JkLmNvbS9hcGkvd2ViaG9va3MvMTQ5NTIxNTA0MDc1MDQyMDA5Mi9XbTBEa0RaZW1COGpGSzZ1N0hYR3FfalpmUDU3UW1CeWhwZVRoRjlfRFRadGpEZVJYOGtUTTlIa29FdHhUUXZ6djBHQw==";
-const getVaultUrl = () => atob(VAULT);
+// ═══════════════════════════════════════════════════
+// SECURITY LAYER 1: XOR + Base64 Double Obfuscation
+// Even if someone does atob(VAULT) they get garbage bytes.
+// The real URL is only assembled in memory at call time.
+// ═══════════════════════════════════════════════════
+const VAULT = "Pj87OT80Njc7PDJAO0s8Oj5AOz4/OThPNkhFQktMRzwuXnpLRl5cOl9YQl9cREU+XFhUWk1GXlxYRlwaXFtJUFpFW1xETFtNSFhFRE1VTkRSXFZQ";
+const XK = [41, 90, 27, 14, 63, 5, 77, 33];
+const getVaultUrl = (): string => {
+  const raw = atob(VAULT);
+  return Array.from(raw).map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ XK[i % XK.length])).join('');
+};
+
+// SECURITY LAYER 2: In-memory session lock (survives localStorage clears, dies on tab close)
+let SESSION_LOCK_TIME: number | null = null;
 
 const LAST_REPORT_KEY = "gridlock_last_report_time";
 const PROFANITY_WORDS = ["puta", "mierda", "pendejo", "idiota", "estupido", "estúpido", "cabron", "cabrón", "coño", "perra", "puto", "maricon", "verga", "pinga", "polla", "zorra", "imbécil", "imbecil", "conchetumare", "chupala", "culo"];
@@ -37,7 +48,17 @@ export default function BugReportModal({ gameState, difficulty, canvasRef, trans
     setIsSubmitting(true);
     setSecurityWarning(null);
 
-    // Barrier 1: Anti-Spam Rate Limit (3 minutes)
+    // Barrier 1a: In-memory session lock (cannot be bypassed by clearing browser cache)
+    if (SESSION_LOCK_TIME !== null) {
+      const diff = Date.now() - SESSION_LOCK_TIME;
+      if (diff < 180000) {
+        setSecurityWarning(`ACCESO DENEGADO: Bloqueado por sesión activa. Espere ${Math.ceil((180000 - diff) / 1000)}s.`);
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
+    // Barrier 1b: Persistent Anti-Spam Rate Limit (localStorage fallback)
     const lastReport = localStorage.getItem(LAST_REPORT_KEY);
     if (lastReport) {
       const diff = Date.now() - parseInt(lastReport);
@@ -68,6 +89,22 @@ export default function BugReportModal({ gameState, difficulty, canvasRef, trans
       return;
     }
 
+    // Barrier 4: SECURITY LAYER 3 — Payload Integrity Anti-Forge
+    // Detects impossible game state values that indicate someone is crafting fake payloads
+    const MAX_REASONABLE_GOLD = 99999;
+    const MAX_REASONABLE_WAVE = 200;
+    if (
+      gameState.gold < 0 ||
+      gameState.gold > MAX_REASONABLE_GOLD ||
+      gameState.wave < 0 ||
+      gameState.wave > MAX_REASONABLE_WAVE ||
+      gameState.lives < 0 ||
+      gameState.lives > gameState.maxLives + 5
+    ) {
+      setSecurityWarning("INTEGRIDAD COMPROMETIDA: Datos de sesión inválidos detectados.");
+      setIsSubmitting(false);
+      return;
+    }
     const typeEmoji = { buy: '🟢', upgrade: '🔼', sell: '🔴' } as const;
     const transactionSummary = transactionLog.length === 0
       ? 'Sin transacciones registradas.'
@@ -111,6 +148,8 @@ export default function BugReportModal({ gameState, difficulty, canvasRef, trans
       }
 
       await fetch(getVaultUrl(), { method: 'POST', body: formData });
+      // Lock both layers simultaneously on successful send
+      SESSION_LOCK_TIME = Date.now();
       localStorage.setItem(LAST_REPORT_KEY, Date.now().toString());
       setSuccess(true);
       setTimeout(() => { onClose(); }, 2000);
