@@ -135,18 +135,24 @@ class SoundEngineClass {
     this.init(); 
     if (!this.ctx) return;
     
+    // Fuerza el desbloqueo del AudioContext en el navegador sincronamente con el click
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+    this.playTone(1, 'sine', 0.01, 0); // Dummy invisible sound to unlock audio engine safely
+
     this.isMusicPlaying = true;
     this.beatStep = 0;
     
     // Un latido, más audible para altavoces de notebook/celular (Frecuencias ~130Hz)
-    const baseNotes = [130.81, 0, 0, 0, 120.00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; 
+    const baseNotes = [220.00, 0, 0, 0, 110.00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; 
     
     this.musicInterval = window.setInterval(() => {
       if (!this.isMusicPlaying || this.isMuted) return;
       const freq = baseNotes[this.beatStep % 16];
       if (freq > 0) {
-        // 'triangle' suena suave pero contiene suficientes armónicos para ser escuchado.
-        this.playTone(freq, 'triangle', 1.0, 0.15); 
+        // 'square' es agresiva y no puede fallar en escucharse en ningún parlante
+        this.playTone(freq, 'square', 0.4, 0.08); 
       }
       this.beatStep++;
     }, 400); // 400ms por paso = El loop entero tarda 6 segundos en repetirse
