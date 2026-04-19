@@ -402,6 +402,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
             let closestDist = 120 * 120; // 120px aggro range for Boss
             towersRef.current.forEach(t => {
               if (t.health <= 0) return;
+              if (t.type === 'signal') return; // Signal towers are non-combat, bosses ignore them
               const dx = t.x - enemy.x;
               const dy = t.y - enemy.y;
               const ds = dx*dx + dy*dy;
