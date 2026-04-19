@@ -54,7 +54,15 @@ export interface Projectile {
   type?: TowerType; // To handle special effects like slow
 }
 
-
+export interface DamagePopup {
+  id: string;
+  x: number;
+  y: number;
+  amount: number;
+  life: number;
+  maxLife: number;
+  isCrit: boolean;
+}
 
 export interface Soldier {
   id: string;

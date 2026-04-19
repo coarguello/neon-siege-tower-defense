@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Shield, Heart, Coins, Play, Pause, RotateCcw, Zap, Target, Crosshair, Sword, Users, Activity, Radio, Flame, Sun, Snowflake, Wand, Bomb, Trash, AlertTriangle, Volume2, VolumeX } from 'lucide-react';
-import { Point, Enemy, Tower, Projectile, GameState, TowerType, EnemyType, Soldier, DifficultyLevel, MapLayout } from '../types';
+import { Point, Enemy, Tower, Projectile, GameState, TowerType, EnemyType, Soldier, DifficultyLevel, MapLayout, DamagePopup } from '../types';
 import { CANVAS_WIDTH, CANVAS_HEIGHT, TOWER_STATS, ENEMY_STATS } from '../constants';
 import BugReportModal from './BugReportModal';
 import { SoundEngine } from '../utils/SoundEngine';
@@ -43,6 +43,8 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
   const soldiersRef = useRef<Soldier[]>([]);
   const towersRef = useRef<Tower[]>([]);
   const projectilesRef = useRef<Projectile[]>([]);
+  const damagePopupsRef = useRef<DamagePopup[]>([]);
+  const shakeIntensityRef = useRef<number>(0);
   const gameStateRef = useRef<GameState>(gameState);
   const lastWaveTimeRef = useRef<number>(0);
   const prevGoldRef = useRef<number>(gameState.gold);
@@ -426,6 +428,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
                 if (enemy.hitCooldown <= 0) {
                   tower.health -= 150; // Massive hit
                   enemy.hitCooldown = 1500;
+                  shakeIntensityRef.current = Math.max(shakeIntensityRef.current, 15); // Boss punch = big shake
                 }
                 // Boss stops moving to smash the tower
                 return;
@@ -693,6 +696,21 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
           // Apply Armor to remaining damage
           const effectiveDamage = Math.max(remainingDamage > 0 ? 1 : 0, remainingDamage - (e.armor || 0));
           const newHealth = e.health - effectiveDamage;
+
+          // Spawn floating damage number
+          if (effectiveDamage > 0) {
+            const isCrit = effectiveDamage >= 50;
+            damagePopupsRef.current.push({
+              id: Math.random().toString(36).substr(2, 9),
+              x: e.x + (Math.random() - 0.5) * 30,
+              y: e.y - 20,
+              amount: Math.round(effectiveDamage),
+              life: 1.0,
+              maxLife: 1.0,
+              isCrit,
+            });
+            if (isCrit) shakeIntensityRef.current = Math.max(shakeIntensityRef.current, 5);
+          }
           
           if (newHealth <= 0) {
             goldEarned += e.reward;
@@ -751,7 +769,18 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
         projectilesRef.current = projectilesRef.current.filter(p => !hitProjectiles.includes(p.id));
       }
 
-      // 4. Render
+      // 5. Decay Screen Shake
+      if (shakeIntensityRef.current > 0) {
+        shakeIntensityRef.current = Math.max(0, shakeIntensityRef.current - deltaTime * 0.04);
+      }
+
+      // 6. Decay Damage Popups
+      damagePopupsRef.current = damagePopupsRef.current
+        .map(p => ({ ...p, life: p.life - deltaTime / 800, y: p.y - deltaTime * 0.04 }))
+        .filter(p => p.life > 0)
+        .slice(-60); // Hard cap to prevent memory blowout
+
+      // 7. Render
       render();
 
       animationFrameId = requestAnimationFrame(update);
@@ -766,6 +795,14 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
       // Clear Base
       ctx.fillStyle = '#0a0a0a';
       ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+      // Apply Screen Shake
+      ctx.save();
+      if (shakeIntensityRef.current > 0.1) {
+        const sx = (Math.random() - 0.5) * shakeIntensityRef.current;
+        const sy = (Math.random() - 0.5) * shakeIntensityRef.current;
+        ctx.translate(sx, sy);
+      }
 
       // Draw Main Path Ground
       ctx.strokeStyle = '#222';
@@ -1357,6 +1394,32 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
         }
       }
       */
+
+      // Restore canvas transform (undo screen shake)
+      ctx.restore();
+
+      // Draw Floating Damage Numbers (drawn AFTER restore so they don't shake)
+      damagePopupsRef.current.forEach(p => {
+        const alpha = Math.max(0, p.life / p.maxLife);
+        const scale = p.isCrit ? 1.6 : 1.0;
+        const fontSize = Math.round(11 * scale);
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.font = `bold ${fontSize}px monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        if (p.isCrit) {
+          // Crit: orange glow outline + white core
+          ctx.strokeStyle = '#ff6600';
+          ctx.lineWidth = 3;
+          ctx.strokeText(`-${p.amount}`, p.x, p.y);
+          ctx.fillStyle = '#ffffff';
+        } else {
+          ctx.fillStyle = '#ff4444';
+        }
+        ctx.fillText(`-${p.amount}`, p.x, p.y);
+        ctx.restore();
+      });
     };
 
     animationFrameId = requestAnimationFrame(update);
@@ -1488,6 +1551,8 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
     soldiersRef.current = [];
     towersRef.current = [];
     projectilesRef.current = [];
+    damagePopupsRef.current = [];
+    shakeIntensityRef.current = 0;
     lastWaveTimeRef.current = 0;
     
     // Clear selection
