@@ -157,11 +157,11 @@ class SoundEngineClass {
       if (!this.isMusicPlaying || this.isMuted) return;
       const freq = sequence[this.beatStep % 16];
       
-      // 'triangle' genera un aura ochentosa suave, y con duraciones largas simula un poco de eco (0.4s)
-      this.playTone(freq, 'triangle', 0.4, 0.20); 
+      // 'triangle' genera un aura ochentosa suave, alargamos la nota a 2.0 segundos para dar un eco hermoso y onírico
+      this.playTone(freq, 'triangle', 2.0, 0.12); 
       
       this.beatStep++;
-    }, 200); // 1 paso cada 200ms = 5 notas por segundo = Ritmo constante pero llevadero
+    }, 600); // 1 paso cada 600ms = 1 nota cada casi un segundo = Relajante y épico en lugar de traumático
   }
 
   stopMusic() {
