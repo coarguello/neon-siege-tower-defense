@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Shield, Heart, Coins, Play, Pause, RotateCcw, Zap, Target, Crosshair, Sword, Users, Activity, Radio, Flame, Sun, Snowflake, Wand, Bomb, Trash, AlertTriangle, Volume2, VolumeX } from 'lucide-react';
-import { Point, Enemy, Tower, Projectile, GameState, TowerType, EnemyType, Soldier, DifficultyLevel, MapLayout, DamagePopup } from '../types';
+import { Point, Enemy, Tower, Projectile, GameState, TowerType, EnemyType, Soldier, DifficultyLevel, MapLayout, DamagePopup, Transaction } from '../types';
 import { CANVAS_WIDTH, CANVAS_HEIGHT, TOWER_STATS, ENEMY_STATS } from '../constants';
 import BugReportModal from './BugReportModal';
 import { SoundEngine } from '../utils/SoundEngine';
@@ -46,6 +46,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
   const damagePopupsRef = useRef<DamagePopup[]>([]);
   const shakeIntensityRef = useRef<number>(0);
   const popupThrottleRef = useRef<Map<string, number>>(new Map());
+  const transactionLogRef = useRef<Transaction[]>([]);
   const gameStateRef = useRef<GameState>(gameState);
   const lastWaveTimeRef = useRef<number>(0);
   const prevGoldRef = useRef<number>(gameState.gold);
@@ -1482,6 +1483,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
           };
           towersRef.current = [...towersRef.current, newTower];
           setGameState(prev => ({ ...prev, gold: prev.gold - stats.cost }));
+          transactionLogRef.current.push({ type: 'buy', towerType: selectedTowerType, amount: stats.cost, wave: gameStateRef.current.wave });
           SoundEngine.playCoin();
         } else {
           SoundEngine.playError();
@@ -1529,6 +1531,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
     });
 
     setGameState(prev => ({ ...prev, gold: prev.gold - upgradeCost }));
+    transactionLogRef.current.push({ type: 'upgrade', towerType: tower.type, amount: upgradeCost, wave: gameStateRef.current.wave });
     SoundEngine.playCoin();
   };
 
@@ -1542,6 +1545,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
     towersRef.current = towersRef.current.filter(t => t.id !== towerId);
     setGameState(prev => ({ ...prev, gold: prev.gold + refund }));
     setSelectedTowerId(null);
+    transactionLogRef.current.push({ type: 'sell', towerType: tower.type, amount: -refund, wave: gameStateRef.current.wave });
     SoundEngine.playCoin();
   };
 
@@ -1980,6 +1984,8 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
           <BugReportModal 
             gameState={gameState} 
             difficulty={difficulty}
+            canvasRef={canvasRef}
+            transactionLog={transactionLogRef.current}
             onClose={() => setGameState(p => ({ ...p, isBugReportOpen: false, isPaused: false }))} 
           />
         )}

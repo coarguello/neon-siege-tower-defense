@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Bug, X, Send } from 'lucide-react';
-import { GameState, DifficultyLevel } from '../types';
+import { GameState, DifficultyLevel, Transaction } from '../types';
 
 interface BugReportModalProps {
   gameState: GameState;
   difficulty: DifficultyLevel;
+  canvasRef: React.RefObject<HTMLCanvasElement>;
+  transactionLog: Transaction[];
   onClose: () => void;
 }
 
@@ -16,7 +18,7 @@ const getVaultUrl = () => atob(VAULT);
 const LAST_REPORT_KEY = "gridlock_last_report_time";
 const PROFANITY_WORDS = ["puta", "mierda", "pendejo", "idiota", "estupido", "estúpido", "cabron", "cabrón", "coño", "perra", "puto", "maricon", "verga", "pinga", "polla", "zorra", "imbécil", "imbecil", "conchetumare", "chupala", "culo"];
 
-export default function BugReportModal({ gameState, difficulty, onClose }: BugReportModalProps) {
+export default function BugReportModal({ gameState, difficulty, canvasRef, transactionLog, onClose }: BugReportModalProps) {
   const [reportText, setReportText] = useState("");
   const [mainCategory, setMainCategory] = useState<string>("");
   const [subCategory, setSubCategory] = useState<string>("");
@@ -66,12 +68,17 @@ export default function BugReportModal({ gameState, difficulty, onClose }: BugRe
       return;
     }
 
+    const typeEmoji = { buy: '🟢', upgrade: '🔼', sell: '🔴' } as const;
+    const transactionSummary = transactionLog.length === 0
+      ? 'Sin transacciones registradas.'
+      : transactionLog.slice(-15).map(t => `${typeEmoji[t.type]} W${t.wave} — **${t.towerType}** ${t.type === 'sell' ? `+${Math.abs(t.amount)}g (vendida)` : `-${t.amount}g`}`).join('\n');
+
     const payload = {
       content: "🔴 **NUEVO REPORTE DE BUG DETECTADO**",
       embeds: [{
         title: "Detalles del Error (Gridlock Defense)",
         description: reportText,
-        color: 16711680, // Red
+        color: 16711680,
         fields: [
           { name: "Categoría de Falla", value: `**${mainCategory}** ${subCategory ? `➔ ${subCategory}` : ''}`, inline: false },
           { name: "Oleada", value: gameState.wave.toString(), inline: true },
@@ -79,23 +86,34 @@ export default function BugReportModal({ gameState, difficulty, onClose }: BugRe
           { name: "Oro Actual", value: gameState.gold.toString(), inline: true },
           { name: "Vidas", value: `${gameState.lives}/${gameState.maxLives}`, inline: true },
           { name: "Enemigos Eliminados", value: gameState.enemiesKilled.toString(), inline: true },
-          { name: "Nivel Ejército", value: gameState.armyLevel.toString(), inline: true }
+          { name: "Nivel Ejército", value: gameState.armyLevel.toString(), inline: true },
+          { name: "🧾 Historial de Compras (últimas 15)", value: transactionSummary, inline: false }
         ],
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        image: { url: 'attachment://screenshot.png' }
       }]
     };
 
     try {
-      await fetch(getVaultUrl(), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
+      // Capture canvas screenshot
+      const canvas = canvasRef.current;
+      const formData = new FormData();
+      formData.append('payload_json', JSON.stringify(payload));
+
+      if (canvas) {
+        const dataUrl = canvas.toDataURL('image/png');
+        const base64 = dataUrl.split(',')[1];
+        const byteChars = atob(base64);
+        const byteArr = new Uint8Array(byteChars.length);
+        for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
+        const blob = new Blob([byteArr], { type: 'image/png' });
+        formData.append('files[0]', blob, 'screenshot.png');
+      }
+
+      await fetch(getVaultUrl(), { method: 'POST', body: formData });
       localStorage.setItem(LAST_REPORT_KEY, Date.now().toString());
       setSuccess(true);
-      setTimeout(() => {
-        onClose();
-      }, 2000);
+      setTimeout(() => { onClose(); }, 2000);
     } catch (error) {
       console.error("Error enviando bug:", error);
       setSecurityWarning("Error interno al contactar la bóveda.");

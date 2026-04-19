@@ -79,6 +79,13 @@ export interface Soldier {
 
 export type DifficultyLevel = 'easy' | 'medium' | 'master' | 'insane';
 
+export interface Transaction {
+  type: 'buy' | 'upgrade' | 'sell';
+  towerType: string;
+  amount: number; // positive = spent, negative = refunded
+  wave: number;
+}
+
 export interface GameState {
   gold: number;
   lives: number;
