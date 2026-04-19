@@ -9,7 +9,12 @@ interface BugReportModalProps {
   onClose: () => void;
 }
 
-const WEBHOOK_URL = "https://discord.com/api/webhooks/1495215040750420092/Wm0DkDZemB8jFK6u7HXGq_jZfP57QmByhpeThF9_DTZtjDeRX8kTM9HkoEtxTQvzv0GC";
+// Obfuscated Vault to prevent basic crawler bots from scraping the Discord hook
+const VAULT = "aHR0cHM6Ly9kaXNjb3JkLmNvbS9hcGkvd2ViaG9va3MvMTQ5NTIxNTA0MDc1MDQyMDA5Mi9XbTBEa0RaZW1COGpGSzZ1N0hYR3FfalpmUDU3UW1CeWhwZVRoRjlfRFRadGpEZVJYOGtUTTlIa29FdHhUUXZ6djBHQw==";
+const getVaultUrl = () => atob(VAULT);
+
+const LAST_REPORT_KEY = "gridlock_last_report_time";
+const PROFANITY_WORDS = ["puta", "mierda", "pendejo", "idiota", "estupido", "estúpido", "cabron", "cabrón", "coño", "perra", "puto", "maricon", "verga", "pinga", "polla", "zorra", "imbécil", "imbecil", "conchetumare", "chupala", "culo"];
 
 export default function BugReportModal({ gameState, difficulty, onClose }: BugReportModalProps) {
   const [reportText, setReportText] = useState("");
@@ -17,6 +22,7 @@ export default function BugReportModal({ gameState, difficulty, onClose }: BugRe
   const [subCategory, setSubCategory] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [securityWarning, setSecurityWarning] = useState<string | null>(null);
 
   // Auto clean subcategory when main changes
   React.useEffect(() => {
@@ -26,8 +32,27 @@ export default function BugReportModal({ gameState, difficulty, onClose }: BugRe
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reportText.trim()) return;
-
     setIsSubmitting(true);
+    setSecurityWarning(null);
+
+    // Barrier 1: Anti-Spam Rate Limit (3 minutes)
+    const lastReport = localStorage.getItem(LAST_REPORT_KEY);
+    if (lastReport) {
+      const diff = Date.now() - parseInt(lastReport);
+      if (diff < 180000) {
+        setSecurityWarning(`BARRERA DE SPAM: Por favor, espere ${Math.ceil((180000 - diff) / 1000)}s antes de reportar.`);
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
+    // Barrier 2: Profanity Toxicity Filter
+    const normalizedText = reportText.toLowerCase();
+    if (PROFANITY_WORDS.some(word => normalizedText.includes(word))) {
+      setSecurityWarning("SISTEMA BLOQUEADO: Lenguaje ofensivo detectado. Modere su vocabulario.");
+      setIsSubmitting(false);
+      return;
+    }
 
     const payload = {
       content: "🔴 **NUEVO REPORTE DE BUG DETECTADO**",
@@ -49,17 +74,19 @@ export default function BugReportModal({ gameState, difficulty, onClose }: BugRe
     };
 
     try {
-      await fetch(WEBHOOK_URL, {
+      await fetch(getVaultUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
+      localStorage.setItem(LAST_REPORT_KEY, Date.now().toString());
       setSuccess(true);
       setTimeout(() => {
         onClose();
       }, 2000);
     } catch (error) {
       console.error("Error enviando bug:", error);
+      setSecurityWarning("Error interno al contactar la bóveda.");
       setIsSubmitting(false);
     }
   };
@@ -193,11 +220,21 @@ export default function BugReportModal({ gameState, difficulty, onClose }: BugRe
                 />
               </div>
 
-              <div className="bg-red-500/5 border border-red-500/10 rounded-lg p-3">
-                <p className="text-[10px] text-gray-400 uppercase tracking-wider text-center">
-                  * Se enviarán automáticamente los datos de tu oleada, oro y vidas actuales para debuggear el error.
-                </p>
-              </div>
+              {securityWarning ? (
+                 <motion.div 
+                   initial={{ opacity: 0, y: 10 }} 
+                   animate={{ opacity: 1, y: 0 }} 
+                   className="bg-red-900/50 border border-red-500 rounded-lg p-4 font-bold text-center text-red-500 uppercase tracking-widest text-xs animate-pulse"
+                 >
+                   ⚠️ {securityWarning}
+                 </motion.div>
+              ) : (
+                <div className="bg-red-500/5 border border-red-500/10 rounded-lg p-3">
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wider text-center">
+                    * Se enviarán automáticamente los datos de tu oleada, oro y vidas actuales para debuggear el error.
+                  </p>
+                </div>
+              )}
 
               <button
                 type="submit"
