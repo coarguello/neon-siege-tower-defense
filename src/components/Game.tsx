@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Shield, Heart, Coins, Play, Pause, RotateCcw, Zap, Target, Crosshair, Sword, Users, Activity, Radio, Flame, Sun, Snowflake, Wand, Bomb, Trash } from 'lucide-react';
+import { Shield, Heart, Coins, Play, Pause, RotateCcw, Zap, Target, Crosshair, Sword, Users, Activity, Radio, Flame, Sun, Snowflake, Wand, Bomb, Trash, AlertTriangle } from 'lucide-react';
 import { Point, Enemy, Tower, Projectile, GameState, TowerType, EnemyType, Soldier, DifficultyLevel, MapLayout } from '../types';
 import { CANVAS_WIDTH, CANVAS_HEIGHT, TOWER_STATS, ENEMY_STATS } from '../constants';
+import BugReportModal from './BugReportModal';
 
 const getInitialState = (diff: DifficultyLevel): GameState => {
   switch (diff) {
@@ -1542,6 +1543,13 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
           >
             {gameState.isPaused ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
           </button>
+          <button 
+            onClick={() => setGameState(p => ({ ...p, isBugReportOpen: true }))}
+            className="p-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 hover:border-red-500/50 rounded-lg transition-colors backdrop-blur-md"
+            title="Report System Bug"
+          >
+            <AlertTriangle className="w-5 h-5" />
+          </button>
         </div>
       </div>
 
@@ -1850,6 +1858,17 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
       {/* Background Grid Decoration */}
       <div className="fixed inset-0 opacity-5 pointer-events-none z-0" 
            style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '100px 100px' }} />
+
+      {/* Bug Report Overlay */}
+      <AnimatePresence>
+        {gameState.isBugReportOpen && (
+          <BugReportModal 
+            gameState={gameState} 
+            difficulty={difficulty}
+            onClose={() => setGameState(p => ({ ...p, isBugReportOpen: false }))} 
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
