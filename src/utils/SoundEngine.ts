@@ -144,18 +144,24 @@ class SoundEngineClass {
     this.isMusicPlaying = true;
     this.beatStep = 0;
     
-    // Un latido, más audible para altavoces de notebook/celular (Frecuencias ~130Hz)
-    const baseNotes = [220.00, 0, 0, 0, 110.00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; 
+    // Arpegio de misterio "Stranger Things / Ambient"
+    // C3, Eb3, G3, B3 variando. Esto da progresión y color sin ser ruido molesto.
+    const sequence = [
+      130.81, 155.56, 196.00, 246.94, 
+      130.81, 155.56, 196.00, 246.94,
+      130.81, 155.56, 196.00, 293.66, 
+      130.81, 155.56, 196.00, 246.94
+    ];
     
     this.musicInterval = window.setInterval(() => {
       if (!this.isMusicPlaying || this.isMuted) return;
-      const freq = baseNotes[this.beatStep % 16];
-      if (freq > 0) {
-        // 'square' es agresiva y no puede fallar en escucharse en ningún parlante
-        this.playTone(freq, 'square', 0.4, 0.08); 
-      }
+      const freq = sequence[this.beatStep % 16];
+      
+      // 'triangle' genera un aura ochentosa suave, y con duraciones largas simula un poco de eco (0.4s)
+      this.playTone(freq, 'triangle', 0.4, 0.05); 
+      
       this.beatStep++;
-    }, 400); // 400ms por paso = El loop entero tarda 6 segundos en repetirse
+    }, 200); // 1 paso cada 200ms = 5 notas por segundo = Ritmo constante pero llevadero
   }
 
   stopMusic() {
