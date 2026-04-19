@@ -592,17 +592,38 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
         enemiesRef.current = enemiesRef.current.filter(e => !finishedEnemies.includes(e.id));
       }
 
-      // 2. Update Towers (Firing)
+      // 2a. Signal Tower Aura — Heal & Boost nearby towers
+      const boostedTowerIds = new Set<string>();
+      const signalFatigue = Math.max(0.25, 1 - (gameStateRef.current.wave * 0.01));
+
+      towersRef.current.forEach(signal => {
+        if (signal.type !== 'signal') return;
+        towersRef.current.forEach(target => {
+          if (target.id === signal.id) return;
+          const dx = target.x - signal.x;
+          const dy = target.y - signal.y;
+          if (dx * dx + dy * dy <= signal.range * signal.range) {
+            // Heal: 2 HP/s degraded by fatigue
+            target.health = Math.min(target.maxHealth, target.health + 2 * signalFatigue * (deltaTime / 1000));
+            boostedTowerIds.add(target.id);
+          }
+        });
+      });
+
+      // 2b. Update Towers (Firing)
       const currentEnemies = enemiesRef.current;
       const newProjectiles: Projectile[] = [];
 
       towersRef.current.forEach(tower => {
+        if (tower.type === 'signal') return; // Signal towers never fire projectiles
         if (tower.lastFired === 0) {
           tower.lastFired = time;
           return;
         }
 
-        if (time - tower.lastFired < tower.fireRate) return;
+        // Fire rate boost: +25% speed (0.75× cooldown) degraded by fatigue
+        const boostMult = boostedTowerIds.has(tower.id) ? (1 - 0.25 * signalFatigue) : 1;
+        if (time - tower.lastFired < tower.fireRate * boostMult) return;
 
         // Find target
         let target: Enemy | null = null;
@@ -886,12 +907,48 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
         ctx.fillStyle = '#fff';
         ctx.fillRect(t.x - (coreSize + pulse) / 2, t.y - (coreSize + pulse) / 2, coreSize + pulse, coreSize + pulse);
 
-        // Level Indicator
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 10px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(`LVL ${t.level}`, t.x, t.y + 35);
-        
+        // === SIGNAL TOWER: Animated WiFi Rings ===
+        if (t.type === 'signal') {
+          const now = Date.now();
+          // Draw 3 concentric animated WiFi arcs
+          [40, 65, 90].forEach((radius, i) => {
+            const phase = ((now / 800) - i * 0.4) % 1; // staggered outward pulse
+            if (phase < 0) return;
+            ctx.save();
+            ctx.globalAlpha = (1 - phase) * 0.7;
+            ctx.strokeStyle = '#00ffaa';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            // WiFi arc: top 135° arc
+            ctx.arc(t.x, t.y, radius * phase + 10, -Math.PI * 0.85, -Math.PI * 0.15);
+            ctx.stroke();
+            ctx.restore();
+          });
+        } else {
+          // Level Indicator (non-signal towers only)
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 10px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(`LVL ${t.level}`, t.x, t.y + 35);
+        }
+
+        // Boost glow: green outer ring if this tower is inside a Signal aura
+        const isSignalBoosted = towersRef.current.some(sig => {
+          if (sig.type !== 'signal' || sig.id === t.id) return false;
+          const dx = t.x - sig.x;
+          const dy = t.y - sig.y;
+          return dx * dx + dy * dy <= sig.range * sig.range;
+        });
+        if (isSignalBoosted && t.type !== 'signal') {
+          const glowPulse = (Math.sin(Date.now() / 400) + 1) / 2; // 0..1
+          ctx.save();
+          ctx.globalAlpha = 0.3 + glowPulse * 0.3;
+          ctx.strokeStyle = '#00ffaa';
+          ctx.lineWidth = 3;
+          ctx.strokeRect(t.x - 25, t.y - 25, 50, 50);
+          ctx.restore();
+        }
+
         // Tower Health Bar
         if (t.health < t.maxHealth) {
           const hpPercent = t.health / t.maxHealth;
@@ -1888,6 +1945,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
                             {type === 'frost' && <Snowflake className="w-6 h-6" />}
                             {type === 'beam' && <Wand className="w-6 h-6" />}
                             {type === 'artillery' && <Bomb className="w-6 h-6" />}
+                            {type === 'signal' && <Zap className="w-6 h-6" style={{ transform: 'rotate(45deg)' }} />}
                           </div>
                           <div className={`text-[10px] text-left leading-tight ${isSelected ? 'text-black/60' : 'text-gray-500'}`}>
                             {type === 'laser' && "Rapid fire light beam."}
@@ -1900,6 +1958,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
                             {type === 'frost' && "Heavy slow effect."}
                             {type === 'beam' && "Continuous energy stream."}
                             {type === 'artillery' && "Massive long-range explosion."}
+                            {type === 'signal' && "📡 Heals & boosts nearby towers."}
                           </div>
                         </div>
                       </button>

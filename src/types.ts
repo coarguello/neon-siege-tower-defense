@@ -26,7 +26,7 @@ export interface Enemy {
   hitCooldown?: number; // Attack speed against towers
 }
 
-export type TowerType = 'laser' | 'plasma' | 'slow' | 'railgun' | 'tesla' | 'minigun' | 'pulse' | 'frost' | 'beam' | 'artillery';
+export type TowerType = 'laser' | 'plasma' | 'slow' | 'railgun' | 'tesla' | 'minigun' | 'pulse' | 'frost' | 'beam' | 'artillery' | 'signal';
 
 export interface Tower {
   id: string;

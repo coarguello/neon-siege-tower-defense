@@ -260,6 +260,14 @@ export const TOWER_STATS: Record<TowerType, { range: number; damage: number; fir
     color: '#ff0000', // Pure Red
     maxHealth: 150,
   },
+  signal: {
+    range: 250,    // Aura radius — how far the boost and heal reach
+    damage: 0,     // Doesn't attack enemies
+    fireRate: 0,   // Doesn't fire
+    cost: 175,
+    color: '#00ffaa', // Neon teal green
+    maxHealth: 250,
+  },
 };
 
 export const ENEMY_STATS: Record<EnemyType, { health: number; speed: number; reward: number; color: string; armor?: number; shield?: number }> = {
