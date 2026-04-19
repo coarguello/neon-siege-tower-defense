@@ -158,7 +158,7 @@ class SoundEngineClass {
       const freq = sequence[this.beatStep % 16];
       
       // 'triangle' genera un aura ochentosa suave, y con duraciones largas simula un poco de eco (0.4s)
-      this.playTone(freq, 'triangle', 0.4, 0.05); 
+      this.playTone(freq, 'triangle', 0.4, 0.20); 
       
       this.beatStep++;
     }, 200); // 1 paso cada 200ms = 5 notas por segundo = Ritmo constante pero llevadero
