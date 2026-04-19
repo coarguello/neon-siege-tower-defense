@@ -8,11 +8,11 @@ import { SoundEngine } from '../utils/SoundEngine';
 
 const getInitialState = (diff: DifficultyLevel): GameState => {
   switch (diff) {
-    case 'easy': return { gold: 200, lives: 20, maxLives: 20, wave: 0, armyLevel: 1, isPaused: false, isGameOver: false, enemiesKilled: 0 };
-    case 'medium': return { gold: 150, lives: 20, maxLives: 20, wave: 0, armyLevel: 1, isPaused: false, isGameOver: false, enemiesKilled: 0 };
-    case 'master': return { gold: 100, lives: 15, maxLives: 15, wave: 0, armyLevel: 1, isPaused: false, isGameOver: false, enemiesKilled: 0 };
-    case 'insane': return { gold: 75, lives: 10, maxLives: 10, wave: 0, armyLevel: 1, isPaused: false, isGameOver: false, enemiesKilled: 0 };
-    default: return { gold: 150, lives: 20, maxLives: 20, wave: 0, armyLevel: 1, isPaused: false, isGameOver: false, enemiesKilled: 0 };
+    case 'easy': return { gold: 200, lives: 20, maxLives: 20, wave: 0, armyLevel: 1, isPaused: false, isDoubleSpeed: false, isGameOver: false, enemiesKilled: 0 };
+    case 'medium': return { gold: 150, lives: 20, maxLives: 20, wave: 0, armyLevel: 1, isPaused: false, isDoubleSpeed: false, isGameOver: false, enemiesKilled: 0 };
+    case 'master': return { gold: 100, lives: 15, maxLives: 15, wave: 0, armyLevel: 1, isPaused: false, isDoubleSpeed: false, isGameOver: false, enemiesKilled: 0 };
+    case 'insane': return { gold: 75, lives: 10, maxLives: 10, wave: 0, armyLevel: 1, isPaused: false, isDoubleSpeed: false, isGameOver: false, enemiesKilled: 0 };
+    default: return { gold: 150, lives: 20, maxLives: 20, wave: 0, armyLevel: 1, isPaused: false, isDoubleSpeed: false, isGameOver: false, enemiesKilled: 0 };
   }
 };
 
@@ -337,8 +337,10 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
         return;
       }
 
-      const deltaTime = time - lastTime;
+      const rawDelta = time - lastTime;
       lastTime = time;
+      // Apply game speed multiplier
+      const deltaTime = gameStateRef.current.isDoubleSpeed ? rawDelta * 2 : rawDelta;
 
       // Auto-spawn next wave when current is cleared
       if (enemiesRef.current.length === 0 && gameStateRef.current.wave > 0) {
@@ -1644,6 +1646,17 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
             className="p-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors backdrop-blur-md"
           >
             {gameState.isPaused ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
+          </button>
+          <button 
+            onClick={() => setGameState(p => ({ ...p, isDoubleSpeed: !p.isDoubleSpeed }))}
+            className={`p-3 border rounded-lg transition-colors backdrop-blur-md font-black text-sm tracking-wide ${
+              gameState.isDoubleSpeed 
+                ? 'bg-yellow-400/20 border-yellow-400/60 text-yellow-300 shadow-[0_0_12px_rgba(250,204,21,0.4)]'
+                : 'bg-white/5 hover:bg-white/10 border-white/10 text-gray-400'
+            }`}
+            title="Toggle 2x Speed"
+          >
+            ⚡2x
           </button>
           <button 
             onClick={() => setGameState(p => ({ ...p, isBugReportOpen: true, isPaused: true }))}

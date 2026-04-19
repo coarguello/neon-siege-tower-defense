@@ -86,8 +86,9 @@ export interface GameState {
   wave: number;
   armyLevel: number;
   isPaused: boolean;
+  isDoubleSpeed: boolean;
   isGameOver: boolean;
-  isBossAlert?: boolean; // Controls visual flashing drill sequence
+  isBossAlert?: boolean;
   enemiesKilled: number;
   isBugReportOpen?: boolean;
 }
