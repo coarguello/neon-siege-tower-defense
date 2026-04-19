@@ -429,7 +429,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
                 if (enemy.hitCooldown <= 0) {
                   tower.health -= 150; // Massive hit
                   enemy.hitCooldown = 1500;
-                  shakeIntensityRef.current = Math.max(shakeIntensityRef.current, 15); // Boss punch = big shake
+                  shakeIntensityRef.current = Math.max(shakeIntensityRef.current, 40); // Boss punch = VIOLENT shake
                 }
                 // Boss stops moving to smash the tower
                 return;
@@ -714,7 +714,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
                 isCrit,
               });
               popupThrottleRef.current.set(e.id, now);
-              if (isCrit) shakeIntensityRef.current = Math.max(shakeIntensityRef.current, 5);
+              if (isCrit) shakeIntensityRef.current = Math.max(shakeIntensityRef.current, 15);
             }
           }
           
@@ -777,7 +777,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
 
       // 5. Decay Screen Shake
       if (shakeIntensityRef.current > 0) {
-        shakeIntensityRef.current = Math.max(0, shakeIntensityRef.current - deltaTime * 0.04);
+        shakeIntensityRef.current = Math.max(0, shakeIntensityRef.current - deltaTime * 0.02);
       }
 
       // 6. Decay Damage Popups
