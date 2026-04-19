@@ -4,6 +4,7 @@ import Game from './components/Game';
 
 import { DifficultyLevel, MapLayout } from './types';
 import { MAP_LAYOUTS } from './constants';
+import { SoundEngine } from './utils/SoundEngine';
 
 export default function App() {
   const [screen, setScreen] = useState<'start' | 'game'>('start');
@@ -11,9 +12,16 @@ export default function App() {
   const [selectedMap, setSelectedMap] = useState<MapLayout>(MAP_LAYOUTS[0]);
 
   const handleStart = (diff: DifficultyLevel, mapCode: MapLayout) => {
+    SoundEngine.init();
+    SoundEngine.startMusic();
     setDifficulty(diff);
     setSelectedMap(mapCode);
     setScreen('game');
+  };
+
+  const handleReturnMenu = () => {
+    SoundEngine.stopMusic();
+    setScreen('start');
   };
 
   return (
@@ -24,7 +32,7 @@ export default function App() {
         <Game 
           difficulty={difficulty} 
           mapLayout={selectedMap} 
-          onReturnToMenu={() => setScreen('start')}
+          onReturnToMenu={handleReturnMenu}
         />
       )}
     </div>

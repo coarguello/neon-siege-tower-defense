@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Shield, Heart, Coins, Play, Pause, RotateCcw, Zap, Target, Crosshair, Sword, Users, Activity, Radio, Flame, Sun, Snowflake, Wand, Bomb, Trash, AlertTriangle } from 'lucide-react';
+import { Shield, Heart, Coins, Play, Pause, RotateCcw, Zap, Target, Crosshair, Sword, Users, Activity, Radio, Flame, Sun, Snowflake, Wand, Bomb, Trash, AlertTriangle, Volume2, VolumeX } from 'lucide-react';
 import { Point, Enemy, Tower, Projectile, GameState, TowerType, EnemyType, Soldier, DifficultyLevel, MapLayout } from '../types';
 import { CANVAS_WIDTH, CANVAS_HEIGHT, TOWER_STATS, ENEMY_STATS } from '../constants';
 import BugReportModal from './BugReportModal';
+import { SoundEngine } from '../utils/SoundEngine';
 
 const getInitialState = (diff: DifficultyLevel): GameState => {
   switch (diff) {
@@ -618,6 +619,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
 
         if (target) {
           tower.lastFired = time;
+          SoundEngine.playLaser();
           newProjectiles.push({
             id: Math.random().toString(36).substr(2, 9),
             x: tower.x,
@@ -695,6 +697,8 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
           if (newHealth <= 0) {
             goldEarned += e.reward;
             earnedKills += 1;
+            SoundEngine.playExplosion();
+            if (e.reward > 0) SoundEngine.playCoin();
             
             // Handle Splitting
             if (e.type === 'splitter') {
@@ -1407,7 +1411,12 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
           };
           towersRef.current = [...towersRef.current, newTower];
           setGameState(prev => ({ ...prev, gold: prev.gold - stats.cost }));
+          SoundEngine.playCoin();
+        } else {
+          SoundEngine.playError();
         }
+      } else {
+        SoundEngine.playError();
       }
       
       // Whether successful or not, clicking the canvas while holding a tower 
@@ -1423,10 +1432,17 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
   const upgradeTower = (towerId: string) => {
     const tower = towersRef.current.find(t => t.id === towerId);
     if (!tower) return;
-    if (tower.level >= 5) return;
+    
+    if (tower.level >= 5) {
+      SoundEngine.playError();
+      return;
+    }
 
     const upgradeCost = Math.floor(tower.cost * 1.5);
-    if (gameState.gold < upgradeCost) return;
+    if (gameState.gold < upgradeCost) {
+      SoundEngine.playError();
+      return;
+    }
 
     towersRef.current = towersRef.current.map(t => {
       if (t.id === towerId) {
@@ -1442,6 +1458,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
     });
 
     setGameState(prev => ({ ...prev, gold: prev.gold - upgradeCost }));
+    SoundEngine.playCoin();
   };
 
   const sellTower = (towerId: string) => {
@@ -1454,6 +1471,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
     towersRef.current = towersRef.current.filter(t => t.id !== towerId);
     setGameState(prev => ({ ...prev, gold: prev.gold + refund }));
     setSelectedTowerId(null);
+    SoundEngine.playCoin();
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -1484,6 +1502,19 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
 
   return (
     <div className="relative w-full h-screen bg-[#050505] flex font-sans text-white overflow-hidden">
+      {/* Top Right Controls */}
+      <div className="absolute top-0 right-0 p-6 z-50 pointer-events-none flex gap-2">
+        <button 
+          onClick={() => {
+            SoundEngine.toggleMute();
+            setGameState(p => ({ ...p }));
+          }}
+          className="p-3 bg-black/60 hover:bg-black/80 border border-white/10 rounded-lg transition-colors backdrop-blur-md pointer-events-auto shadow-xl"
+        >
+          {SoundEngine.isMuted ? <VolumeX className="w-5 h-5 text-gray-500" /> : <Volume2 className="w-5 h-5 text-white" />}
+        </button>
+      </div>
+
       {/* HUD - Economy & Health (Top Left) */}
       <div className="absolute top-0 left-0 p-6 flex flex-col gap-2 z-50 pointer-events-none">
         <div className="flex items-center gap-3 bg-black/60 backdrop-blur-md border border-white/10 px-4 py-2 rounded-lg pointer-events-auto shadow-xl relative">
