@@ -1544,7 +1544,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
             {gameState.isPaused ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
           </button>
           <button 
-            onClick={() => setGameState(p => ({ ...p, isBugReportOpen: true }))}
+            onClick={() => setGameState(p => ({ ...p, isBugReportOpen: true, isPaused: true }))}
             className="p-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 hover:border-red-500/50 rounded-lg transition-colors backdrop-blur-md"
             title="Report System Bug"
           >
@@ -1865,7 +1865,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
           <BugReportModal 
             gameState={gameState} 
             difficulty={difficulty}
-            onClose={() => setGameState(p => ({ ...p, isBugReportOpen: false }))} 
+            onClose={() => setGameState(p => ({ ...p, isBugReportOpen: false, isPaused: false }))} 
           />
         )}
       </AnimatePresence>
