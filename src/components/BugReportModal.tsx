@@ -13,8 +13,15 @@ const WEBHOOK_URL = "https://discord.com/api/webhooks/1495215040750420092/Wm0DkD
 
 export default function BugReportModal({ gameState, difficulty, onClose }: BugReportModalProps) {
   const [reportText, setReportText] = useState("");
+  const [mainCategory, setMainCategory] = useState<string>("");
+  const [subCategory, setSubCategory] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+
+  // Auto clean subcategory when main changes
+  React.useEffect(() => {
+    setSubCategory("");
+  }, [mainCategory]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,6 +36,7 @@ export default function BugReportModal({ gameState, difficulty, onClose }: BugRe
         description: reportText,
         color: 16711680, // Red
         fields: [
+          { name: "Categoría de Falla", value: `**${mainCategory}** ${subCategory ? `➔ ${subCategory}` : ''}`, inline: false },
           { name: "Oleada", value: gameState.wave.toString(), inline: true },
           { name: "Dificultad", value: difficulty.toUpperCase(), inline: true },
           { name: "Oro Actual", value: gameState.gold.toString(), inline: true },
@@ -98,6 +106,82 @@ export default function BugReportModal({ gameState, difficulty, onClose }: BugRe
             </div>
 
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs uppercase tracking-widest text-gray-500 mb-2">Familia del Problema</label>
+                  <select
+                    value={mainCategory}
+                    onChange={e => setMainCategory(e.target.value)}
+                    className="w-full bg-black border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-red-500/50 appearance-none cursor-pointer"
+                    required
+                  >
+                    <option value="" disabled>Seleccione Categoría...</option>
+                    <option value="Torretas">Torretas</option>
+                    <option value="Ejército">Ejército (Soldados)</option>
+                    <option value="Camino/Enemigos">Camino y Enemigos</option>
+                    <option value="Interfaz/HUD">Interfaz Gráfica</option>
+                    <option value="Otro">Otro Comportamiento</option>
+                  </select>
+                </div>
+                
+                {mainCategory === "Torretas" && (
+                  <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}>
+                    <label className="block text-xs uppercase tracking-widest text-gray-500 mb-2">Nivel de la Torre</label>
+                    <select
+                      value={subCategory}
+                      onChange={e => setSubCategory(e.target.value)}
+                      className="w-full bg-black border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-red-500/50 appearance-none cursor-pointer"
+                      required
+                    >
+                      <option value="" disabled>Especifique Nivel...</option>
+                      <option value="Nivel 1">Nivel 1</option>
+                      <option value="Nivel 2">Nivel 2</option>
+                      <option value="Nivel 3">Nivel 3</option>
+                      <option value="Nivel 4">Nivel 4</option>
+                      <option value="Nivel 5 (MAX)">Nivel 5 (MAX)</option>
+                      <option value="Todas las Torres">Falla en múltiples niveles</option>
+                    </select>
+                  </motion.div>
+                )}
+
+                {mainCategory === "Ejército" && (
+                  <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}>
+                    <label className="block text-xs uppercase tracking-widest text-gray-500 mb-2">Nivel del Ejército</label>
+                    <select
+                      value={subCategory}
+                      onChange={e => setSubCategory(e.target.value)}
+                      className="w-full bg-black border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-red-500/50 appearance-none cursor-pointer"
+                      required
+                    >
+                      <option value="" disabled>Especifique Nivel...</option>
+                      <option value="Nivel 1 (Basic)">Nivel 1 (Basic)</option>
+                      <option value="Nivel 2 (Combat)">Nivel 2 (Combat)</option>
+                      <option value="Nivel 3 (Shield)">Nivel 3 (Shield)</option>
+                      <option value="Nivel 4+ (Elite)">Nivel 4+ (Elite)</option>
+                    </select>
+                  </motion.div>
+                )}
+
+                {mainCategory === "Camino/Enemigos" && (
+                  <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}>
+                    <label className="block text-xs uppercase tracking-widest text-gray-500 mb-2">Tipo de Falla</label>
+                    <select
+                      value={subCategory}
+                      onChange={e => setSubCategory(e.target.value)}
+                      className="w-full bg-black border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-red-500/50 appearance-none cursor-pointer"
+                      required
+                    >
+                      <option value="" disabled>Especifique Zona...</option>
+                      <option value="Se traban en las curvas">Se traban en las curvas</option>
+                      <option value="Atraviesan las paredes">Atraviesan las paredes</option>
+                      <option value="No llegan a la base">Problema en la meta</option>
+                      <option value="Error de Spawn">Problema al nacer</option>
+                      <option value="Otro patrón errático">Otro patrón errático</option>
+                    </select>
+                  </motion.div>
+                )}
+              </div>
+
               <div>
                 <label className="block text-xs uppercase tracking-widest text-gray-500 mb-2">Describa la anomalía</label>
                 <textarea
@@ -117,9 +201,9 @@ export default function BugReportModal({ gameState, difficulty, onClose }: BugRe
 
               <button
                 type="submit"
-                disabled={isSubmitting || !reportText.trim()}
+                disabled={isSubmitting || !reportText.trim() || !mainCategory || (['Torretas', 'Ejército', 'Camino/Enemigos'].includes(mainCategory) && !subCategory)}
                 className={`w-full py-4 mt-2 rounded-xl border font-black italic tracking-[0.2em] uppercase transition-all flex items-center justify-center gap-2 ${
-                  isSubmitting || !reportText.trim()
+                  isSubmitting || !reportText.trim() || !mainCategory || (['Torretas', 'Ejército', 'Camino/Enemigos'].includes(mainCategory) && !subCategory)
                     ? 'bg-white/5 border-white/5 text-white/20 cursor-not-allowed'
                     : 'bg-red-500/10 border-red-500/50 text-red-500 hover:bg-red-500 hover:text-white hover:shadow-[0_0_20px_rgba(255,0,0,0.5)]'
                 }`}
