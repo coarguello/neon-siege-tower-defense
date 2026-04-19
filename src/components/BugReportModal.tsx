@@ -54,6 +54,18 @@ export default function BugReportModal({ gameState, difficulty, onClose }: BugRe
       return;
     }
 
+    // Barrier 3: Low-Effort Spam & Keyboard Smashing
+    if (normalizedText.length < 15) {
+      setSecurityWarning("DATOS INSUFICIENTES: El reporte es demasiado corto para describir un problema.");
+      setIsSubmitting(false);
+      return;
+    }
+    if (/(jaja|jeje|jiji|haha|hehe|xdxd|kkkk)/.test(normalizedText) || /(.)\1{4,}/.test(normalizedText)) {
+      setSecurityWarning("RUIDO DETECTADO: Secuencias repetitivas o bromas inválidas bloqueadas.");
+      setIsSubmitting(false);
+      return;
+    }
+
     const payload = {
       content: "🔴 **NUEVO REPORTE DE BUG DETECTADO**",
       embeds: [{
