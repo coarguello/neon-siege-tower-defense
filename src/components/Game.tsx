@@ -429,7 +429,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
                 // Attack the tower!
                 enemy.hitCooldown = (enemy.hitCooldown || 0) - deltaTime;
                 if (enemy.hitCooldown <= 0) {
-                  tower.health -= 150; // Massive hit
+                  tower.health -= 40; // 3 hits to destroy (towers have 100 HP)
                   enemy.hitCooldown = 1500;
                   shakeIntensityRef.current = Math.max(shakeIntensityRef.current, 40); // Boss punch = VIOLENT shake
                 }
