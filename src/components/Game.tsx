@@ -402,7 +402,6 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
             let closestDist = 120 * 120; // 120px aggro range for Boss
             towersRef.current.forEach(t => {
               if (t.health <= 0) return;
-              if (t.type === 'signal') return; // Signal towers are non-combat, bosses ignore them
               const dx = t.x - enemy.x;
               const dy = t.y - enemy.y;
               const ds = dx*dx + dy*dy;
@@ -413,7 +412,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
             });
             if (closestTower) {
               enemy.targetTowerId = closestTower;
-              enemy.hitCooldown = 0; // Fire immediately on aggro for instant feedback!
+              enemy.hitCooldown = 0;
             }
           }
 
@@ -431,9 +430,10 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
                 // Attack the tower!
                 enemy.hitCooldown = (enemy.hitCooldown || 0) - deltaTime;
                 if (enemy.hitCooldown <= 0) {
-                  tower.health -= 40; // 3 hits to destroy (towers have 100 HP)
-                  enemy.hitCooldown = 1500;
-                  shakeIntensityRef.current = Math.max(shakeIntensityRef.current, 40); // Boss punch = VIOLENT shake
+                  tower.health -= 40;
+                  // Signal towers are fragile support—boss hits them slower (3s cooldown vs 1.5s)
+                  enemy.hitCooldown = tower.type === 'signal' ? 3000 : 1500;
+                  shakeIntensityRef.current = Math.max(shakeIntensityRef.current, 40);
                 }
                 // Boss stops moving to smash the tower
                 return;
@@ -599,16 +599,22 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
 
       towersRef.current.forEach(signal => {
         if (signal.type !== 'signal') return;
+        // Range scales +40px per level, heal scales +1.5 HP/s per level
+        const effectiveRange = signal.range + (signal.level - 1) * 40;
+        const healPerSecond = (2 + (signal.level - 1) * 1.5) * signalFatigue;
+        const fireBoost = 0.25 + (signal.level - 1) * 0.05; // +5% extra speed per level
         towersRef.current.forEach(target => {
           if (target.id === signal.id) return;
           const dx = target.x - signal.x;
           const dy = target.y - signal.y;
-          if (dx * dx + dy * dy <= signal.range * signal.range) {
-            // Heal: 2 HP/s degraded by fatigue
-            target.health = Math.min(target.maxHealth, target.health + 2 * signalFatigue * (deltaTime / 1000));
+          if (dx * dx + dy * dy <= effectiveRange * effectiveRange) {
+            // Heal: scales with level, degraded by fatigue
+            target.health = Math.min(target.maxHealth, target.health + healPerSecond * (deltaTime / 1000));
             boostedTowerIds.add(target.id);
           }
         });
+        // Store level-based boost for use in fire rate check below
+        (signal as any)._fireBoost = fireBoost;
       });
 
       // 2b. Update Towers (Firing)
@@ -623,7 +629,19 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
         }
 
         // Fire rate boost: +25% speed (0.75× cooldown) degraded by fatigue
-        const boostMult = boostedTowerIds.has(tower.id) ? (1 - 0.25 * signalFatigue) : 1;
+        // Get the strongest signal boost affecting this tower (level-scaled)
+        let bestFireBoost = 0;
+        towersRef.current.forEach(sig => {
+          if (sig.type !== 'signal') return;
+          const dx = tower.x - sig.x;
+          const dy = tower.y - sig.y;
+          const effRange = sig.range + (sig.level - 1) * 40;
+          if (dx * dx + dy * dy <= effRange * effRange) {
+            const lvlBoost = 0.25 + (sig.level - 1) * 0.05;
+            if (lvlBoost > bestFireBoost) bestFireBoost = lvlBoost;
+          }
+        });
+        const boostMult = bestFireBoost > 0 ? (1 - bestFireBoost * signalFatigue) : 1;
         if (time - tower.lastFired < tower.fireRate * boostMult) return;
 
         // Find target
@@ -858,9 +876,12 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
         const stats = TOWER_STATS[t.type];
         const isSelected = selectedTowerId === t.id;
         
+        // For Signal towers the visible aura grows with level
+        const displayRange = t.type === 'signal' ? t.range + (t.level - 1) * 40 : t.range;
+
         // Range Circle
         ctx.beginPath();
-        ctx.arc(t.x, t.y, t.range, 0, Math.PI * 2);
+        ctx.arc(t.x, t.y, displayRange, 0, Math.PI * 2);
         ctx.fillStyle = isSelected ? `${stats.color}22` : `${stats.color}08`;
         ctx.fill();
         ctx.strokeStyle = isSelected ? `${stats.color}66` : `${stats.color}22`;
@@ -932,13 +953,21 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
           ctx.textAlign = 'center';
           ctx.fillText(`LVL ${t.level}`, t.x, t.y + 35);
         }
+        // Signal tower also shows level
+        if (t.type === 'signal') {
+          ctx.fillStyle = '#00ffaa';
+          ctx.font = 'bold 10px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(`LVL ${t.level}`, t.x, t.y + 35);
+        }
 
         // Boost glow: green outer ring if this tower is inside a Signal aura
         const isSignalBoosted = towersRef.current.some(sig => {
           if (sig.type !== 'signal' || sig.id === t.id) return false;
           const dx = t.x - sig.x;
           const dy = t.y - sig.y;
-          return dx * dx + dy * dy <= sig.range * sig.range;
+          const effRange = sig.range + (sig.level - 1) * 40;
+          return dx * dx + dy * dy <= effRange * effRange;
         });
         if (isSignalBoosted && t.type !== 'signal') {
           const glowPulse = (Math.sin(Date.now() / 400) + 1) / 2; // 0..1
