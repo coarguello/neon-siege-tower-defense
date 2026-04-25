@@ -37,6 +37,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
   const [mousePos, setMousePos] = useState<Point>({ x: 0, y: 0 });
   const [isShopOpen, setIsShopOpen] = useState(false);
   const [goldPopups, setGoldPopups] = useState<GoldPopup[]>([]);
+  const [canvasScale, setCanvasScale] = useState(1);
 
   // Game entities managed in refs to avoid React re-render overhead
   const enemiesRef = useRef<Enemy[]>([]);
@@ -94,6 +95,19 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
   useEffect(() => {
     gameStateRef.current = gameState;
   }, [gameState]);
+
+  // Dynamic canvas scale: shrink to fit the viewport on small screens
+  useEffect(() => {
+    const computeScale = () => {
+      const availW = window.innerWidth;
+      const availH = window.innerHeight;
+      const scale = Math.min(availW / CANVAS_WIDTH, availH / CANVAS_HEIGHT, 1);
+      setCanvasScale(scale);
+    };
+    computeScale();
+    window.addEventListener('resize', computeScale);
+    return () => window.removeEventListener('resize', computeScale);
+  }, []);
 
 
   const spawnArmy = useCallback(() => {
@@ -1529,8 +1543,10 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
 
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const scaleX = CANVAS_WIDTH / rect.width;
+    const scaleY = CANVAS_HEIGHT / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
 
     // 1. Check if clicking on an existing tower for selection/upgrade
     const clickedTower = towersRef.current.find(t => {
@@ -1640,10 +1656,28 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
+    // Divide by CSS scale so coordinates match the internal 1200x900 canvas space
+    const scaleX = CANVAS_WIDTH / rect.width;
+    const scaleY = CANVAS_HEIGHT / rect.height;
     setMousePos({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
     });
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    if (!touch) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const scaleX = CANVAS_WIDTH / rect.width;
+    const scaleY = CANVAS_HEIGHT / rect.height;
+    const x = (touch.clientX - rect.left) * scaleX;
+    const y = (touch.clientY - rect.top) * scaleY;
+    // Simulate a canvas click at the corrected coordinates
+    handleCanvasClick({ clientX: touch.clientX, clientY: touch.clientY } as React.MouseEvent<HTMLCanvasElement>);
+    setMousePos({ x, y });
   };
 
   const handleReboot = () => {
@@ -2007,14 +2041,30 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
 
       <div className="flex-1 relative flex flex-col items-center justify-center">
         {/* Main Game Area */}
-        <div className="relative group">
+        {/* Outer div sizes to the visual (scaled) canvas so layout stays correct */}
+        <div
+          style={{
+            width: CANVAS_WIDTH * canvasScale,
+            height: CANVAS_HEIGHT * canvasScale,
+          }}
+        >
+          <div
+            className="relative group"
+            style={{
+              transform: `scale(${canvasScale})`,
+              transformOrigin: 'top left',
+              width: CANVAS_WIDTH,
+              height: CANVAS_HEIGHT,
+            }}
+          >
           <canvas
             ref={canvasRef}
             width={CANVAS_WIDTH}
             height={CANVAS_HEIGHT}
             onClick={handleCanvasClick}
             onMouseMove={handleMouseMove}
-            className="border border-white/10 shadow-2xl cursor-crosshair"
+            onTouchStart={handleTouchStart}
+            className="border border-white/10 shadow-2xl cursor-crosshair touch-none"
           />
           
           {/* Game Over Overlay */}
@@ -2062,6 +2112,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
             )}
           </AnimatePresence>
         </div>
+      </div>
       </div>
 
       {/* Background Grid Decoration */}
