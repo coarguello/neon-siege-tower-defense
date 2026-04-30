@@ -31,7 +31,6 @@
 
 ### Prerequisites
 - Node.js (v18 or higher)
-- A Gemini API Key (Optional for AI features)
 
 ### Installation
 1. Clone the repository:
@@ -45,19 +44,13 @@
    npm install
    ```
 
-3. Configure environment:
-   Create a `.env.local` file and add your API key:
-   ```env
-   GEMINI_API_KEY=your_key_here
-   ```
-
-4. Run the development server:
+3. Run the development server:
    ```bash
    npm run dev
    ```
 
 ## 🧠 Roadmap
-- [ ] AI-driven wave generation using Gemini.
+- [ ] AI-driven wave generation (future/not implemented).
 - [ ] Global leaderboards with Firebase integration.
 - [ ] Mobile-optimized touch controls.
 - [ ] More "Boss" level enemies with unique mechanics.
