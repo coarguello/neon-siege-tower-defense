@@ -35,7 +35,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
   const [selectedTowerType, setSelectedTowerType] = useState<TowerType | null>(null);
   const [selectedTowerId, setSelectedTowerId] = useState<string | null>(null);
   const [mousePos, setMousePos] = useState<Point>({ x: 0, y: 0 });
-  const [isShopOpen, setIsShopOpen] = useState(false);
+  const [isShopOpen, setIsShopOpen] = useState(true);
   const [goldPopups, setGoldPopups] = useState<GoldPopup[]>([]);
   const [canvasScale, setCanvasScale] = useState(1);
 
