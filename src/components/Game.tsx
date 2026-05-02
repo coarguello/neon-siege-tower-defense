@@ -35,7 +35,6 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
   const [selectedTowerType, setSelectedTowerType] = useState<TowerType | null>(null);
   const [selectedTowerId, setSelectedTowerId] = useState<string | null>(null);
   const [mousePos, setMousePos] = useState<Point>({ x: 0, y: 0 });
-  const [isShopOpen, setIsShopOpen] = useState(true);
   const [goldPopups, setGoldPopups] = useState<GoldPopup[]>([]);
   const [canvasScale, setCanvasScale] = useState(1);
 
@@ -1885,27 +1884,10 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
             )}
           </AnimatePresence>
 
-          {/* The "Tab" hanging out */}
-          <button
-            onClick={() => setIsShopOpen(!isShopOpen)}
-            className={`
-              flex flex-col items-center gap-2 p-4 rounded-l-2xl border-y border-l backdrop-blur-xl transition-all shadow-2xl
-              ${isShopOpen ? 'bg-white text-black border-white translate-x-0' : 'bg-black/80 text-white border-white/10 hover:border-white/30 translate-x-0'}
-            `}
+          {/* Shop Panel — always visible */}
+          <div
+            className="w-[300px] h-screen bg-black/80 backdrop-blur-2xl border-l border-white/10 flex flex-col p-8 pt-32 gap-6 overflow-hidden shrink-0"
           >
-            <Shield className={`w-6 h-6 ${isShopOpen ? 'fill-current' : ''}`} />
-            <span className="text-[10px] uppercase tracking-[0.2em] font-black [writing-mode:vertical-lr] rotate-180">Protocols</span>
-          </button>
-
-          {/* The Shop Content */}
-          <AnimatePresence>
-            {isShopOpen && (
-              <motion.div
-                initial={{ width: 0, opacity: 0 }}
-                animate={{ width: 300, opacity: 1 }}
-                exit={{ width: 0, opacity: 0 }}
-                className="h-screen bg-black/80 backdrop-blur-2xl border-l border-white/10 flex flex-col p-8 pt-32 gap-6 overflow-hidden"
-              >
                 <div className="shrink-0">
                   <h3 className="text-xs uppercase tracking-[0.3em] text-gray-500 mb-2">Defense Protocols</h3>
                   <div className="h-px bg-gradient-to-r from-white/20 to-transparent" />
@@ -2033,9 +2015,7 @@ export default function Game({ difficulty, mapLayout, onReturnToMenu }: GameProp
                 <div className="mt-auto p-4 bg-white/5 border border-white/5 rounded italic text-[10px] text-gray-500 text-center">
                   Select a protocol and click on the grid to deploy.
                 </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          </div>
         </div>
       </div>
 
